@@ -20,9 +20,19 @@ async def test_migration_creates_p0_tables(tmp_path: Path) -> None:
     try:
         rows = await db.fetch_all("SELECT name FROM sqlite_master WHERE type = 'table'")
         names = {row["name"] for row in rows}
-        assert {"setting", "account", "account_credential", "event_log"} <= names
+        assert {
+            "setting",
+            "account",
+            "account_credential",
+            "event_log",
+            "chat",
+            "message",
+            "keyword_rule",
+            "reply_config",
+            "block_entry",
+        } <= names
         version = await db.fetch_one("PRAGMA user_version")
-        assert int(version[0]) == 1
+        assert int(version[0]) == 2
     finally:
         await db.close()
 
