@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+
+# 冻结的参考实现，不进入版本库
+wip/
+
+# 运行数据
+data/
+*.db
+*.db-wal
+*.db-shm
+logs/
+
+# 构建与缓存
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+app/web/dist/
