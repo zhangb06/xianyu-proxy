@@ -47,6 +47,7 @@ class XianyuWS:
         http_timeout: float = 30.0,
         send_min_interval: float = 2.0,
         raw_sink: Callable[[dict[str, Any]], None] | None = None,
+        proxy: str = "",
     ) -> None:
         self.jar = jar
         self.myid = myid or str(jar.get("unb") or "")
@@ -58,6 +59,7 @@ class XianyuWS:
         self.http_timeout = http_timeout
         self.send_min_interval = send_min_interval
         self.raw_sink = raw_sink
+        self.proxy = proxy
 
         self.token: str | None = None
         self._ws: websockets.ClientConnection | None = None
@@ -76,7 +78,9 @@ class XianyuWS:
 
     async def connect(self) -> None:
         if not self.token:
-            self.token = await fetch_im_token(self.jar, self.device_id, timeout=self.http_timeout)
+            self.token = await fetch_im_token(
+                self.jar, self.device_id, timeout=self.http_timeout, proxy=self.proxy
+            )
         if not self.token:
             raise WSError("获取 IM Token 失败，Cookie 可能已失效")
 
@@ -88,6 +92,7 @@ class XianyuWS:
             ping_interval=20,
             ping_timeout=15,
             max_size=8 * 1024 * 1024,
+            proxy=self.proxy or None,
         )
         try:
             await self._register()

@@ -106,6 +106,7 @@ async def mtop_call(
     extra_params: dict[str, str] | None = None,
     method: str = "POST",
     timeout: float = 30.0,
+    proxy: str = "",
 ) -> dict[str, Any]:
     """调用 mtop 接口，令牌过期时重签一次。"""
     url = f"{H5_BASE}/{api}/{version}/"
@@ -132,7 +133,9 @@ async def mtop_call(
             params.update(extra_params)
 
         try:
-            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            async with httpx.AsyncClient(
+                timeout=timeout, follow_redirects=True, proxy=proxy or None
+            ) as client:
                 if method.upper() == "GET":
                     response = await client.get(
                         url, params={**params, "data": payload}, headers=_headers(jar)
@@ -164,14 +167,14 @@ async def mtop_call(
     raise MtopError(last_error or f"{api} 调用失败")
 
 
-async def get_m_h5_tk(jar: CookieJar, *, timeout: float = 30.0) -> None:
+async def get_m_h5_tk(jar: CookieJar, *, timeout: float = 30.0, proxy: str = "") -> None:
     """访问一次 H5 页面以获取 _m_h5_tk。"""
     api = "mtop.gaia.nodejs.gaia.idle.data.gw.v2.index.get"
     url = f"{H5_BASE}/{api}/1.0/"
     referer = "https://passport.goofish.com/"
     data_value = json.dumps({"bizScene": "home"}, separators=(",", ":"))
 
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, proxy=proxy or None) as client:
         first = await client.get(url, headers=_headers(jar, referer))
         jar.merge_response(first)
 

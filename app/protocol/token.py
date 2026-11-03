@@ -20,7 +20,9 @@ def extract_access_token(payload: dict[str, Any]) -> str | None:
     return token if isinstance(token, str) and token else None
 
 
-async def fetch_im_token(jar: CookieJar, device_id: str, *, timeout: float = 30.0) -> str | None:
+async def fetch_im_token(
+    jar: CookieJar, device_id: str, *, timeout: float = 30.0, proxy: str = ""
+) -> str | None:
     payload = await mtop_call(
         jar,
         TOKEN_API,
@@ -36,5 +38,6 @@ async def fetch_im_token(jar: CookieJar, device_id: str, *, timeout: float = 30.
             "log_id": "4c053da6vYwnmf",
         },
         timeout=timeout,
+        proxy=proxy,
     )
     return extract_access_token(payload)
