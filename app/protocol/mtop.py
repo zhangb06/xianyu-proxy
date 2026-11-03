@@ -217,4 +217,15 @@ def decode_payload(payload: str) -> dict[str, Any] | None:
         value = msgpack.unpackb(raw, raw=False, strict_map_key=False)
     except Exception:
         return None
-    return value if isinstance(value, dict) else None
+    if not isinstance(value, dict):
+        return None
+    return _normalize_keys(value)
+
+
+def _normalize_keys(value: Any) -> Any:
+    """闲鱼 msgpack 载荷使用整数键，统一转为字符串键以匹配下游解析。"""
+    if isinstance(value, dict):
+        return {str(key): _normalize_keys(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_normalize_keys(item) for item in value]
+    return value
