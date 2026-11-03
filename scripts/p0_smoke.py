@@ -3,6 +3,7 @@
 用法：
     python scripts/p0_smoke.py login
     python scripts/p0_smoke.py listen --account latest [--reply 测试] [--count 1]
+    python scripts/p0_smoke.py listen --count 3 --record data/fixtures/sync.jsonl
     python scripts/p0_smoke.py send --to <buyer_id> --text "测试"
 """
 
@@ -12,6 +13,7 @@ import argparse
 import asyncio
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -112,7 +114,12 @@ async def cmd_login(args: argparse.Namespace) -> int:
         await db.close()
 
 
-async def _connect(settings: Settings, repo: AccountRepo, account: Account) -> XianyuWS:
+async def _connect(
+    settings: Settings,
+    repo: AccountRepo,
+    account: Account,
+    raw_sink: Callable[[dict[str, Any]], None] | None = None,
+) -> XianyuWS:
     cookie = await repo.load_cookie(account.id)
     if not cookie:
         raise SystemExit(f"账号 {account.id} 没有 Cookie，请先执行 login")
@@ -124,6 +131,7 @@ async def _connect(settings: Settings, repo: AccountRepo, account: Account) -> X
         heartbeat_interval=settings.heartbeat_interval,
         http_timeout=settings.http_timeout,
         send_min_interval=settings.send_min_interval,
+        raw_sink=raw_sink,
     )
     await ws.connect()
     return ws
@@ -131,13 +139,27 @@ async def _connect(settings: Settings, repo: AccountRepo, account: Account) -> X
 
 async def cmd_listen(args: argparse.Namespace) -> int:
     settings, _, db, repo = await _open()
+    record_file = None
     try:
         account = await _pick_account(repo, args.account)
         if account is None:
             print("未找到账号，请先执行 login")
             return 1
 
-        ws = await _connect(settings, repo, account)
+        record_sink: Callable[[dict[str, Any]], None] | None = None
+        if args.record:
+            record_path = Path(args.record)
+            record_path.parent.mkdir(parents=True, exist_ok=True)
+            record_file = record_path.open("a", encoding="utf-8")
+
+            def _write_frame(frame: dict[str, Any]) -> None:
+                record_file.write(json.dumps(frame, ensure_ascii=False) + "\n")
+                record_file.flush()
+
+            record_sink = _write_frame
+            print(f"原始下行帧将追加写入: {record_path}")
+
+        ws = await _connect(settings, repo, account, raw_sink=record_sink)
         await repo.set_status(account.id, "online")
         await log_event(db, type="ws.connected", account_id=account.id)
         print(f"已连接账号 {account.id} ({account.xianyu_id})，开始监听（Ctrl+C 退出）...")
@@ -182,6 +204,8 @@ async def cmd_listen(args: argparse.Namespace) -> int:
             await log_event(db, type="ws.closed", account_id=account.id)
         return 0
     finally:
+        if record_file is not None:
+            record_file.close()
         await db.close()
 
 
@@ -232,6 +256,7 @@ def build_parser() -> argparse.ArgumentParser:
     listen.add_argument("--account", default="latest", help="account id / xianyu_id / latest")
     listen.add_argument("--reply", default="", help="收到第一条对方文本时回复该内容")
     listen.add_argument("--count", type=int, default=0, help="收到 N 条后退出，0 表示持续监听")
+    listen.add_argument("--record", default="", help="将原始下行帧追加写入 JSONL，用于 fixture")
     listen.set_defaults(func=cmd_listen)
 
     send = sub.add_parser("send", help="向指定用户发送一条文本")

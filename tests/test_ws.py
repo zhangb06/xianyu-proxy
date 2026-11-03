@@ -58,7 +58,7 @@ def _sync_push(text: str, item_id: str = "42") -> str:
     return json.dumps({"body": {"syncPushPackage": {"data": [{"data": payload}]}}})
 
 
-async def _connect(monkeypatch) -> tuple[XianyuWS, FakeWS]:
+async def _connect(monkeypatch, raw_sink=None) -> tuple[XianyuWS, FakeWS]:
     fake = FakeWS()
 
     async def fake_connect(*args: Any, **kwargs: Any) -> FakeWS:
@@ -69,7 +69,12 @@ async def _connect(monkeypatch) -> tuple[XianyuWS, FakeWS]:
 
     monkeypatch.setattr("app.protocol.ws.websockets.connect", fake_connect)
     monkeypatch.setattr(XianyuWS, "_register", no_register)
-    ws = XianyuWS(CookieJar({"unb": "seller1"}), myid="seller1", heartbeat_interval=3600)
+    ws = XianyuWS(
+        CookieJar({"unb": "seller1"}),
+        myid="seller1",
+        heartbeat_interval=3600,
+        raw_sink=raw_sink,
+    )
     ws.token = "token"
     await ws.connect()
     return ws, fake
@@ -111,6 +116,21 @@ async def test_wait_result_survives_early_response(monkeypatch) -> None:
         assert response is not None
         assert response["body"] == {"ok": True}
         assert mid not in ws._pending
+    finally:
+        await ws.close()
+
+
+async def test_raw_sink_records_downlink_frames(monkeypatch) -> None:
+    recorded: list[dict[str, Any]] = []
+    ws, fake = await _connect(monkeypatch, raw_sink=recorded.append)
+    try:
+        fake.incoming.put_nowait(_sync_push("在吗"))
+        fake.incoming.put_nowait(None)
+
+        [message async for message in ws.iter_messages()]
+
+        assert len(recorded) == 1
+        assert "syncPushPackage" in recorded[0]["body"]
     finally:
         await ws.close()
 

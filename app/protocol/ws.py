@@ -6,7 +6,7 @@ import inspect
 import json
 import random
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 import websockets
@@ -46,6 +46,7 @@ class XianyuWS:
         heartbeat_interval: float = 15.0,
         http_timeout: float = 30.0,
         send_min_interval: float = 2.0,
+        raw_sink: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         self.jar = jar
         self.myid = myid or str(jar.get("unb") or "")
@@ -56,6 +57,7 @@ class XianyuWS:
         self.heartbeat_interval = heartbeat_interval
         self.http_timeout = http_timeout
         self.send_min_interval = send_min_interval
+        self.raw_sink = raw_sink
 
         self.token: str | None = None
         self._ws: websockets.ClientConnection | None = None
@@ -279,8 +281,17 @@ class XianyuWS:
                 continue
             if self._is_heartbeat_response(frame):
                 continue
+            self._record(frame)
             await self._send_ack(frame)
             yield frame
+
+    def _record(self, frame: dict[str, Any]) -> None:
+        if self.raw_sink is None:
+            return
+        try:
+            self.raw_sink(frame)
+        except Exception as exc:
+            logger.warning(f"原始帧记录失败: {exc}")
 
     def _resolve_pending(self, frame: dict[str, Any]) -> bool:
         headers = frame.get("headers")
