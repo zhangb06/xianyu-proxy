@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     send_min_interval: float = 2.0
     account_concurrency: int = 10
     verification_mode: Literal["manual", "auto_fallback"] = "manual"
+    secure_cookies: bool = False
 
     @property
     def data_path(self) -> Path:

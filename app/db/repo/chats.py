@@ -115,6 +115,12 @@ class ChatRepo:
         )
         return [Chat.from_row(row) for row in rows]
 
+    async def list_recent(self, *, limit: int = 200) -> list[Chat]:
+        rows = await self.db.fetch_all(
+            "SELECT * FROM chat ORDER BY last_message_at DESC LIMIT ?", (limit,)
+        )
+        return [Chat.from_row(row) for row in rows]
+
     async def pause(self, chat_row_id: int, until_iso: str) -> None:
         await self.db.write(
             "UPDATE chat SET paused_until = ?, updated_at = ? WHERE id = ?",

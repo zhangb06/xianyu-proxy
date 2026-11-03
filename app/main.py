@@ -2,19 +2,30 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
+from app import __version__
 from app.api.accounts import router as accounts_router
+from app.api.auth import router as auth_router
+from app.api.chats import router as chats_router
+from app.api.events import router as events_router
 from app.api.health import router as health_router
+from app.api.overview import router as overview_router
+from app.api.rules import router as rules_router
 from app.config import Settings, get_settings
 from app.core.logging import setup_logging
 from app.core.secrets import resolve_secret
 from app.db.engine import Database
-from app.db.repo.accounts import AccountRepo
 from app.platform import make_paths
+from app.runtime.qrlogin_manager import QRLoginManager
+from app.runtime.supervisor import Supervisor
+
+WEB_DIST = Path(__file__).parent / "web" / "dist"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -28,20 +39,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await db.connect()
         secret = await resolve_secret(db, current.secret_key)
 
+        supervisor = Supervisor(db, current, secret)
+        await supervisor.start()
+
         app.state.settings = current
         app.state.paths = paths
         app.state.db = db
-        app.state.accounts = AccountRepo(db, secret)
-        logger.info(f"xianyu-lite 启动: data={paths.data}")
+        app.state.secret = secret
+        app.state.supervisor = supervisor
+        app.state.qr = QRLoginManager(supervisor.accounts, supervisor)
+        logger.info(f"xianyu-lite {__version__} 启动: data={paths.data}")
         try:
             yield
         finally:
+            await supervisor.stop()
             await db.close()
             logger.info("xianyu-lite 已停止")
 
-    app = FastAPI(title="xianyu-lite", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="xianyu-lite", version=__version__, lifespan=lifespan)
     app.include_router(health_router, prefix="/api", tags=["health"])
-    app.include_router(accounts_router, prefix="/api", tags=["accounts"])
+    app.include_router(auth_router, prefix="/api")
+    app.include_router(accounts_router, prefix="/api")
+    app.include_router(overview_router, prefix="/api")
+    app.include_router(rules_router, prefix="/api")
+    app.include_router(chats_router, prefix="/api")
+    app.include_router(events_router, prefix="/api")
+    if WEB_DIST.is_dir():
+        app.mount("/", StaticFiles(directory=WEB_DIST, html=True), name="web")
     return app
 
 

@@ -86,6 +86,40 @@ class AccountRepo:
             (status, last_error, utc_now_iso(), account_id),
         )
 
+    async def set_enabled(self, account_id: int, enabled: bool) -> None:
+        await self.db.write(
+            "UPDATE account SET enabled = ?, updated_at = ? WHERE id = ?",
+            (int(enabled), utc_now_iso(), account_id),
+        )
+
+    async def update_fields(
+        self,
+        account_id: int,
+        *,
+        remark: str | None = None,
+        proxy_url: str | None = None,
+        verification_mode: str | None = None,
+    ) -> None:
+        updates: list[str] = []
+        params: list[Any] = []
+        if remark is not None:
+            updates.append("remark = ?")
+            params.append(remark)
+        if proxy_url is not None:
+            updates.append("proxy_url = ?")
+            params.append(proxy_url)
+        if verification_mode is not None:
+            updates.append("verification_mode = ?")
+            params.append(verification_mode)
+        if not updates:
+            return
+        updates.append("updated_at = ?")
+        params.extend([utc_now_iso(), account_id])
+        await self.db.write(f"UPDATE account SET {', '.join(updates)} WHERE id = ?", tuple(params))
+
+    async def delete(self, account_id: int) -> None:
+        await self.db.write("DELETE FROM account WHERE id = ?", (account_id,))
+
     async def save_cookie(self, account_id: int, cookies: dict[str, str]) -> None:
         plaintext = json.dumps(cookies, ensure_ascii=False, separators=(",", ":"))
         await self.db.write(
