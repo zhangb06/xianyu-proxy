@@ -60,9 +60,12 @@ class XianyuWS:
         self.token: str | None = None
         self._ws: websockets.ClientConnection | None = None
         self._heartbeat_task: asyncio.Task[None] | None = None
+        self._reader_task: asyncio.Task[None] | None = None
         self._pending: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        self._messages: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue(maxsize=2000)
         self._seen: set[str] = set()
         self._send_lock = asyncio.Lock()
+        self._write_lock = asyncio.Lock()
         self._last_send_at = 0.0
 
     @property
@@ -84,7 +87,12 @@ class XianyuWS:
             ping_timeout=15,
             max_size=8 * 1024 * 1024,
         )
-        await self._register()
+        try:
+            await self._register()
+        except Exception:
+            await self.close()
+            raise
+        self._reader_task = asyncio.create_task(self._reader_loop())
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         logger.info(f"WS 已连接: myid={self.myid}")
 
@@ -143,9 +151,10 @@ class XianyuWS:
             await asyncio.sleep(self.heartbeat_interval)
 
     async def _send_json(self, frame: dict[str, Any]) -> None:
-        if self._ws is None:
-            raise WSError("WebSocket 未连接")
-        await self._ws.send(json.dumps(frame, ensure_ascii=False))
+        async with self._write_lock:
+            if self._ws is None:
+                raise WSError("WebSocket 未连接")
+            await self._ws.send(json.dumps(frame, ensure_ascii=False))
 
     async def send_text(self, chat_id: str, to_user_id: str, text: str) -> str:
         content = json.dumps({"contentType": 1, "text": {"text": text}}, ensure_ascii=False)
@@ -172,6 +181,7 @@ class XianyuWS:
 
         async with self._send_lock:
             await self._throttle()
+            self._prune_pending()
             self._pending[mid] = asyncio.get_running_loop().create_future()
             try:
                 await self._send_json(frame)
@@ -201,6 +211,27 @@ class XianyuWS:
             self._pending.pop(mid, None)
 
     async def iter_messages(self) -> AsyncIterator[dict[str, Any]]:
+        while True:
+            message = await self._messages.get()
+            if message is None:
+                return
+            yield message
+
+    async def _reader_loop(self) -> None:
+        try:
+            async for message in self._iter_parsed():
+                await self._messages.put(message)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(f"WS 读取循环退出: {exc}")
+        finally:
+            try:
+                self._messages.put_nowait(None)
+            except asyncio.QueueFull:
+                pass
+
+    async def _iter_parsed(self) -> AsyncIterator[dict[str, Any]]:
         async for frame in self._iter_frames():
             if is_sync_package(frame):
                 for item in frame["body"]["syncPushPackage"]["data"]:
@@ -236,12 +267,19 @@ class XianyuWS:
         mid = headers.get("mid") if isinstance(headers, dict) else None
         if not mid:
             return False
-        future = self._pending.pop(mid, None)
+        future = self._pending.get(mid)
         if future is None:
             return False
         if not future.done():
             future.set_result(frame)
         return True
+
+    def _prune_pending(self) -> None:
+        """响应可能早于 wait_result 到达，已完成项由 wait_result 消费，超量时兜底清理。"""
+        if len(self._pending) < 1024:
+            return
+        for key in [key for key, future in self._pending.items() if future.done()]:
+            self._pending.pop(key, None)
 
     @staticmethod
     def _is_heartbeat_response(frame: dict[str, Any]) -> bool:
@@ -287,6 +325,9 @@ class XianyuWS:
         if self._heartbeat_task is not None:
             self._heartbeat_task.cancel()
             self._heartbeat_task = None
+        if self._reader_task is not None:
+            self._reader_task.cancel()
+            self._reader_task = None
         ws = self._ws
         self._ws = None
         if ws is not None:
@@ -295,6 +336,10 @@ class XianyuWS:
             if not future.done():
                 future.cancel()
         self._pending.clear()
+        try:
+            self._messages.put_nowait(None)
+        except asyncio.QueueFull:
+            pass
         logger.info("WS 已关闭")
 
 
