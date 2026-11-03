@@ -202,11 +202,14 @@ async def cmd_send(args: argparse.Namespace) -> int:
                 db,
                 type="ws.send",
                 account_id=account.id,
-                level="warning" if reason else "info",
-                detail={"mid": mid, "reason": reason or ""},
+                level="warning" if reason or response is None else "info",
+                detail={"mid": mid, "reason": reason or "", "responded": response is not None},
             )
             print(f"mid={mid}")
-            print(json.dumps(response, ensure_ascii=False, indent=2) if response else "未收到响应")
+            if response is None:
+                print("未收到响应，请到客户端确认是否已送达")
+                return 1
+            print(json.dumps(response, ensure_ascii=False, indent=2))
             if reason:
                 print(f"被拦截: {reason}")
                 return 1

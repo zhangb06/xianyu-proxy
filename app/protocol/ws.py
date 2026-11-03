@@ -220,16 +220,36 @@ class XianyuWS:
     async def _reader_loop(self) -> None:
         try:
             async for message in self._iter_parsed():
-                await self._messages.put(message)
+                self._enqueue(message)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             logger.warning(f"WS 读取循环退出: {exc}")
         finally:
+            self._signal_end()
+
+    def _enqueue(self, message: dict[str, Any]) -> None:
+        """读循环兼管 ACK 与 mid 响应，不能被业务队列反压阻塞。"""
+        try:
+            self._messages.put_nowait(message)
+        except asyncio.QueueFull:
+            try:
+                self._messages.get_nowait()
+                self._messages.put_nowait(message)
+            except (asyncio.QueueEmpty, asyncio.QueueFull):
+                pass
+            logger.warning("消息队列已满，丢弃最早一条")
+
+    def _signal_end(self) -> None:
+        while True:
             try:
                 self._messages.put_nowait(None)
+                return
             except asyncio.QueueFull:
-                pass
+                try:
+                    self._messages.get_nowait()
+                except asyncio.QueueEmpty:
+                    return
 
     async def _iter_parsed(self) -> AsyncIterator[dict[str, Any]]:
         async for frame in self._iter_frames():
@@ -336,10 +356,7 @@ class XianyuWS:
             if not future.done():
                 future.cancel()
         self._pending.clear()
-        try:
-            self._messages.put_nowait(None)
-        except asyncio.QueueFull:
-            pass
+        self._signal_end()
         logger.info("WS 已关闭")
 
 

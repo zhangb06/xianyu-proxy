@@ -115,6 +115,19 @@ async def test_wait_result_survives_early_response(monkeypatch) -> None:
         await ws.close()
 
 
+async def test_enqueue_never_blocks(monkeypatch) -> None:
+    ws, _fake = await _connect(monkeypatch)
+    try:
+        ws._messages = asyncio.Queue(maxsize=1)
+        ws._enqueue({"text": "a"})
+        ws._enqueue({"text": "b"})
+
+        assert ws._messages.qsize() == 1
+        assert ws._messages.get_nowait()["text"] == "b"
+    finally:
+        await ws.close()
+
+
 def test_reject_reason() -> None:
     response = {"body": {"reason": "发送过于频繁", "moreInfo": "try later"}}
     assert reject_reason(response) == "发送过于频繁（try later）"
