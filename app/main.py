@@ -8,6 +8,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app import __version__
 from app.api.accounts import router as accounts_router
@@ -26,6 +27,16 @@ from app.runtime.qrlogin_manager import QRLoginManager
 from app.runtime.supervisor import Supervisor
 
 WEB_DIST = Path(__file__).parent / "web" / "dist"
+
+
+class SPAStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):  # type: ignore[no-untyped-def]
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            return await super().get_response("index.html", scope)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -65,7 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(chats_router, prefix="/api")
     app.include_router(events_router, prefix="/api")
     if WEB_DIST.is_dir():
-        app.mount("/", StaticFiles(directory=WEB_DIST, html=True), name="web")
+        app.mount("/", SPAStaticFiles(directory=WEB_DIST, html=True), name="web")
     return app
 
 
