@@ -169,6 +169,63 @@ def test_rules_and_blocks_api(client: TestClient, authed: tuple[TestClient, str]
     assert client.delete(f"/api/rules/{rule_id}", headers=headers).json() == {"ok": True}
 
 
+def test_ai_config_api(client: TestClient, authed: tuple[TestClient, str]) -> None:
+    client, csrf = authed
+    headers = {"X-CSRF-Token": csrf}
+    account_id = _make_account(client)
+
+    initial = client.get(f"/api/accounts/{account_id}/ai").json()
+    assert initial["enabled"] is False
+    assert initial["has_api_key"] is False
+    assert initial["base_url"] == "https://api.deepseek.com"
+
+    saved = client.put(
+        f"/api/accounts/{account_id}/ai",
+        json={
+            "enabled": True,
+            "base_url": "https://api.deepseek.com",
+            "model": "deepseek-chat",
+            "persona": "二手数码小店",
+            "product_info": "iPhone 13 128G",
+            "price_floor_cents": 120000,
+            "max_history": 8,
+            "timeout_seconds": 15,
+            "api_key": "sk-test",
+        },
+        headers=headers,
+    )
+    assert saved.status_code == 200
+    body = saved.json()
+    assert body["enabled"] is True
+    assert body["has_api_key"] is True
+    assert body["price_floor_cents"] == 120000
+    assert "api_key" not in body
+
+    cleared = client.put(
+        f"/api/accounts/{account_id}/ai",
+        json={
+            "enabled": False,
+            "base_url": "https://api.deepseek.com",
+            "model": "deepseek-chat",
+            "persona": "",
+            "product_info": "",
+            "price_floor_cents": 0,
+            "max_history": 10,
+            "timeout_seconds": 20,
+            "api_key": "",
+        },
+        headers=headers,
+    )
+    assert cleared.json()["has_api_key"] is False
+
+    tested = client.post(
+        f"/api/accounts/{account_id}/ai/test", json={"text": "能便宜点吗"}, headers=headers
+    )
+    assert tested.status_code == 200
+    assert tested.json()["ok"] is False
+    assert tested.json()["error"] == "no_key"
+
+
 def test_chats_api(client: TestClient, authed: tuple[TestClient, str]) -> None:
     client, csrf = authed
     headers = {"X-CSRF-Token": csrf}

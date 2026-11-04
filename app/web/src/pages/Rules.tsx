@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  Alert,
   Button,
   Card,
   Form,
@@ -31,6 +32,26 @@ export default function RulesPage() {
   const [ruleForm] = Form.useForm();
   const [configForm] = Form.useForm();
   const [blockForm] = Form.useForm();
+  const [aiForm] = Form.useForm();
+  const [aiConfig, setAiConfig] = useState<any>(null);
+  const [aiTestText, setAiTestText] = useState("这个能便宜点吗？最低多少钱？");
+  const [aiTestResult, setAiTestResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [aiTesting, setAiTesting] = useState(false);
+
+  const loadAi = useCallback(() => {
+    if (accountId === null) return;
+    api
+      .get(`/api/accounts/${accountId}/ai`)
+      .then((config: any) => {
+        setAiConfig(config);
+        aiForm.setFieldsValue({ ...config, price_floor_yuan: (config.price_floor_cents || 0) / 100 });
+      })
+      .catch((error) => message.error(String(error)));
+  }, [accountId, aiForm]);
+
+  useEffect(() => {
+    loadAi();
+  }, [loadAi]);
 
   const loadAccounts = useCallback(() => {
     api
@@ -88,6 +109,46 @@ export default function RulesPage() {
     }
   };
 
+  const saveAi = async (values: any) => {
+    try {
+      const payload = {
+        enabled: values.enabled,
+        base_url: values.base_url,
+        model: values.model,
+        persona: values.persona ?? "",
+        product_info: values.product_info ?? "",
+        price_floor_cents: Math.round((values.price_floor_yuan || 0) * 100),
+        max_history: values.max_history,
+        timeout_seconds: values.timeout_seconds,
+        api_key: values.api_key ? values.api_key : undefined,
+      };
+      const saved = await api.put(`/api/accounts/${accountId}/ai`, payload);
+      setAiConfig(saved);
+      aiForm.setFieldsValue({ ...saved, api_key: "" });
+      message.success("AI 配置已保存");
+    } catch (error) {
+      message.error(String(error));
+    }
+  };
+
+  const testAi = async () => {
+    setAiTesting(true);
+    setAiTestResult(null);
+    try {
+      const result: any = await api.post(`/api/accounts/${accountId}/ai/test`, {
+        text: aiTestText,
+      });
+      setAiTestResult({
+        ok: result.ok,
+        text: result.ok ? result.text : `调用失败：${result.error}`,
+      });
+    } catch (error) {
+      setAiTestResult({ ok: false, text: String(error) });
+    } finally {
+      setAiTesting(false);
+    }
+  };
+
   const addBlock = async (values: any) => {
     try {
       await api.post(`/api/accounts/${accountId}/blocks`, values);
@@ -116,6 +177,81 @@ export default function RulesPage() {
     >
       <Tabs
         items={[
+          {
+            key: "ai",
+            label: "AI 回复",
+            children: (
+              <Space direction="vertical" size="large" style={{ width: "100%", maxWidth: 560 }}>
+                <Alert
+                  type="info"
+                  showIcon
+                  message="AI 优先、关键词兜底"
+                  description="AI 启用且 Key 有效时由 AI 回复；超时、报错或报价低于底价时自动回退到关键词规则与默认回复。"
+                />
+                <Form form={aiForm} layout="vertical" onFinish={saveAi}>
+                  <Form.Item name="enabled" label="启用 AI 回复" valuePropName="checked">
+                    <Switch />
+                  </Form.Item>
+                  <Form.Item name="base_url" label="接口地址（OpenAI 兼容）" rules={[{ required: true }]}>
+                    <Input placeholder="https://api.deepseek.com" />
+                  </Form.Item>
+                  <Form.Item name="model" label="模型" rules={[{ required: true }]}>
+                    <Input placeholder="deepseek-chat" />
+                  </Form.Item>
+                  <Form.Item
+                    name="api_key"
+                    label={`API Key${aiConfig?.has_api_key ? "（已配置，留空则不修改）" : ""}`}
+                  >
+                    <Input.Password placeholder={aiConfig?.has_api_key ? "••••••••" : "sk-..."} />
+                  </Form.Item>
+                  <Form.Item name="persona" label="店铺/卖家信息">
+                    <Input.TextArea rows={2} maxLength={2000} placeholder="例如：个人自用数码，只做正品，不议价太狠" />
+                  </Form.Item>
+                  <Form.Item name="product_info" label="商品信息（AI 回答依据）">
+                    <Input.TextArea
+                      rows={4}
+                      maxLength={4000}
+                      placeholder="例如：iPhone 13 128G，国行，九成新，电池 88%，配件齐全，标价 1600 元"
+                    />
+                  </Form.Item>
+                  <Space size="large" wrap>
+                    <Form.Item name="price_floor_yuan" label="底价（元），0 为不限">
+                      <InputNumber min={0} max={1000000} style={{ width: 160 }} />
+                    </Form.Item>
+                    <Form.Item name="max_history" label="上下文条数">
+                      <InputNumber min={0} max={50} style={{ width: 120 }} />
+                    </Form.Item>
+                    <Form.Item name="timeout_seconds" label="超时（秒）">
+                      <InputNumber min={3} max={120} style={{ width: 120 }} />
+                    </Form.Item>
+                  </Space>
+                  <Button type="primary" htmlType="submit">
+                    保存
+                  </Button>
+                </Form>
+                <Card size="small" title="连通性测试">
+                  <Space direction="vertical" style={{ width: "100%" }}>
+                    <Input.TextArea
+                      rows={2}
+                      value={aiTestText}
+                      onChange={(event) => setAiTestText(event.target.value)}
+                      maxLength={500}
+                    />
+                    <Button onClick={testAi} loading={aiTesting}>
+                      发送测试
+                    </Button>
+                    {aiTestResult && (
+                      <Alert
+                        type={aiTestResult.ok ? "success" : "error"}
+                        message={aiTestResult.text}
+                        showIcon
+                      />
+                    )}
+                  </Space>
+                </Card>
+              </Space>
+            ),
+          },
           {
             key: "rules",
             label: "关键词规则",

@@ -6,6 +6,7 @@ from typing import Any, Protocol
 
 from loguru import logger
 
+from app.ai.replier import AIReplyService
 from app.core.ids import generate_uuid
 from app.core.timeutil import utc_now_ms
 from app.db.engine import Database
@@ -36,8 +37,9 @@ class ReplyPipeline:
     出站先落库再发送；自发消息与卡片消息只落库对账，不进回复管道。
     """
 
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database, ai: AIReplyService | None = None) -> None:
         self.db = db
+        self.ai = ai
         self.messages = MessageRepo(db)
         self.chats = ChatRepo(db)
         self.rules = KeywordRuleRepo(db)
@@ -73,14 +75,15 @@ class ReplyPipeline:
         if config.reply_expiry_seconds and _is_expired(parsed["timestamp_ms"], config.reply_expiry_seconds):
             return "expired"
 
-        reply_text = await self._match_reply(account_id, parsed["text"])
-        if reply_text is None:
-            return "no_rule"
-
         if config.debounce_seconds and _within_debounce(chat, config.debounce_seconds):
             return "debounced"
 
-        outcome = await self._send(account, chat, parsed, reply_text, sender, source="auto")
+        decision = await self._decide_reply(account_id, chat, parsed["text"])
+        if decision is None:
+            return "no_rule"
+        reply_text, source = decision
+
+        outcome = await self._send(account, chat, parsed, reply_text, sender, source=source)
         return outcome.outcome
 
     async def send_manual(
@@ -110,7 +113,7 @@ class ReplyPipeline:
         message_id = await self.messages.insert_outbound(
             account_id,
             chat_id=chat.chat_id,
-            dedup_key=f"reply:{parsed['dedup_key']}" if source == "auto" else parsed["dedup_key"],
+            dedup_key=parsed["dedup_key"] if source == "manual" else f"reply:{parsed['dedup_key']}",
             kind="text",
             text=text,
             item_id=parsed.get("item_id", ""),
@@ -164,6 +167,43 @@ class ReplyPipeline:
                 if entry.kind == "keyword" and entry.value in text:
                     return True
         return False
+
+    async def _decide_reply(
+        self, account_id: int, chat: Chat, text: str
+    ) -> tuple[str, str] | None:
+        """AI 优先；未启用或调用失败时回退关键词与默认话术。"""
+        if self.ai is not None:
+            ai_reply = await self.ai.generate(account_id, chat.chat_id, text)
+            if ai_reply.ok:
+                await log_event(
+                    self.db,
+                    type="ai.reply",
+                    account_id=account_id,
+                    level="info",
+                    detail={
+                        "chat_id": chat.chat_id,
+                        "latency_ms": ai_reply.latency_ms,
+                        "prompt_tokens": ai_reply.prompt_tokens,
+                        "completion_tokens": ai_reply.completion_tokens,
+                    },
+                )
+                return ai_reply.text, "ai"
+            await log_event(
+                self.db,
+                type="ai.fallback",
+                account_id=account_id,
+                level="warning",
+                detail={
+                    "chat_id": chat.chat_id,
+                    "error": ai_reply.error,
+                    "latency_ms": ai_reply.latency_ms,
+                },
+            )
+
+        fallback = await self._match_reply(account_id, text)
+        if fallback is None:
+            return None
+        return fallback, "auto"
 
     async def _match_reply(self, account_id: int, text: str) -> str | None:
         rules = await self.rules.list_active(account_id)

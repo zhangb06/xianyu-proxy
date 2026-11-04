@@ -30,9 +30,11 @@ async def test_migration_creates_p0_tables(tmp_path: Path) -> None:
             "keyword_rule",
             "reply_config",
             "block_entry",
+            "ai_config",
+            "ai_usage",
         } <= names
         version = await db.fetch_one("PRAGMA user_version")
-        assert int(version[0]) == 2
+        assert int(version[0]) == 3
     finally:
         await db.close()
 
