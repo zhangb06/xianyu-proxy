@@ -160,15 +160,25 @@ def _system_prompt(config: AIConfig) -> str:
         "没有依据时不要做评价性断言。",
         "5. 不使用「亲」等客服腔，按卖家人设自然说话，语气友好但不卑微。",
     ]
-    if config.price_floor_cents > 0:
-        floor = config.price_floor_cents / 100
+    listing = config.listing_price_cents / 100
+    floor = config.price_floor_cents / 100
+    if listing > 0:
+        parts.append(f"6. 商品标价：{listing:g} 元，这是买家当前看到的价格。")
+    if listing > 0 and listing <= 1:
         parts.append(
-            f"6. 议价时报价不得低于 {floor:.2f} 元，可以在此价格之上小幅让步；"
-            "买家出价过低时礼貌拒绝并说明已接近最低价。"
+            "7. 标价已极低，不存在议价空间：礼貌说明已是标价、不议价，"
+            "不要提供折扣、包邮或让价。不要邀请买家还价。"
         )
+    elif floor > 0 and floor < listing:
+        parts.append(
+            f"7. 议价空间：最低可接受 {floor:g} 元，最高不超过标价 {listing:g} 元；"
+            f"买家砍价时可小幅让步，但不得低于 {floor:g} 元。"
+        )
+    elif floor > 0:
+        parts.append("7. 没有让价空间：礼貌说明已是底价，不要提供折扣或让价。")
     else:
         parts.append(
-            "6. 未配置底价：不要主动邀请砍价，不要报出任何具体金额或承诺让价/包邮；"
+            "7. 未知标价与底价：不要报出任何具体金额，不要主动议价或承诺让价/包邮；"
             "先询问买家的心理价位，并说明需要和卖家确认。"
         )
     if config.product_info.strip():
@@ -181,7 +191,7 @@ def _system_prompt(config: AIConfig) -> str:
 
 
 def _enforce_floor(config: AIConfig, text: str) -> str | None:
-    """拦截越界回复：低于底价的报价，以及无底价时的一切金额/让价承诺。"""
+    """拦截越界回复：低于可接受价的报价，以及无任何价格信息时的金额承诺。"""
     amounts = []
     for match in _MONEY.finditer(text):
         raw = match.group(1) or match.group(2)
@@ -190,10 +200,11 @@ def _enforce_floor(config: AIConfig, text: str) -> str | None:
         except (TypeError, ValueError):
             continue
 
-    if config.price_floor_cents <= 0:
+    effective_floor = config.price_floor_cents or config.listing_price_cents
+    if effective_floor <= 0:
         return "no_floor_price" if amounts else None
 
-    floor_yuan = config.price_floor_cents / 100
+    floor_yuan = effective_floor / 100
     if any(amount < floor_yuan for amount in amounts):
         return "below_floor"
     return None

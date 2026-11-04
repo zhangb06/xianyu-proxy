@@ -19,6 +19,7 @@ class AIConfig:
     model: str
     persona: str
     product_info: str
+    listing_price_cents: int
     price_floor_cents: int
     max_history: int
     timeout_seconds: int
@@ -33,6 +34,7 @@ class AIConfig:
             model=str(row["model"]),
             persona=str(row["persona"]),
             product_info=str(row["product_info"]),
+            listing_price_cents=int(row["listing_price_cents"]),
             price_floor_cents=int(row["price_floor_cents"]),
             max_history=int(row["max_history"]),
             timeout_seconds=int(row["timeout_seconds"]),
@@ -55,6 +57,7 @@ class AIConfigRepo:
                 model=DEFAULT_MODEL,
                 persona="",
                 product_info="",
+                listing_price_cents=0,
                 price_floor_cents=0,
                 max_history=10,
                 timeout_seconds=20,
@@ -79,6 +82,7 @@ class AIConfigRepo:
         model: str,
         persona: str,
         product_info: str,
+        listing_price_cents: int,
         price_floor_cents: int,
         max_history: int,
         timeout_seconds: int,
@@ -93,12 +97,13 @@ class AIConfigRepo:
             key_enc = encrypt(api_key, self.secret) if api_key else ""
         await self.db.write(
             "INSERT INTO ai_config (account_id, enabled, base_url, model, api_key_enc, persona, "
-            "product_info, price_floor_cents, max_history, timeout_seconds, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "product_info, listing_price_cents, price_floor_cents, max_history, "
+            "timeout_seconds, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT (account_id) DO UPDATE SET enabled = excluded.enabled, "
             "base_url = excluded.base_url, model = excluded.model, "
             "api_key_enc = excluded.api_key_enc, persona = excluded.persona, "
             "product_info = excluded.product_info, "
+            "listing_price_cents = excluded.listing_price_cents, "
             "price_floor_cents = excluded.price_floor_cents, "
             "max_history = excluded.max_history, "
             "timeout_seconds = excluded.timeout_seconds, updated_at = excluded.updated_at",
@@ -110,6 +115,7 @@ class AIConfigRepo:
                 key_enc,
                 persona,
                 product_info,
+                listing_price_cents,
                 price_floor_cents,
                 max_history,
                 timeout_seconds,

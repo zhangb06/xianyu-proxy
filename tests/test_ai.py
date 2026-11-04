@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from app.ai.replier import AIReply, AIReplyService, _build_messages, _enforce_floor
+from app.ai.replier import AIReply, AIReplyService, _build_messages, _enforce_floor, _system_prompt
 from app.core.timeutil import utc_now_ms
 from app.db.engine import Database
 from app.db.repo.accounts import AccountRepo
@@ -75,6 +75,7 @@ async def test_ai_config_roundtrip_encrypts_key(tmp_path: Path) -> None:
             model="deepseek-chat",
             persona="二手数码小店",
             product_info="iPhone 13 128G，九成新",
+            listing_price_cents=160000,
             price_floor_cents=120000,
             max_history=8,
             timeout_seconds=15,
@@ -94,6 +95,7 @@ async def test_ai_config_roundtrip_encrypts_key(tmp_path: Path) -> None:
             model="deepseek-chat",
             persona="",
             product_info="",
+            listing_price_cents=0,
             price_floor_cents=0,
             max_history=8,
             timeout_seconds=15,
@@ -109,6 +111,7 @@ async def test_ai_config_roundtrip_encrypts_key(tmp_path: Path) -> None:
             model="deepseek-chat",
             persona="",
             product_info="",
+            listing_price_cents=0,
             price_floor_cents=0,
             max_history=8,
             timeout_seconds=15,
@@ -133,15 +136,31 @@ def test_floor_rejects_low_price() -> None:
 def test_no_floor_blocks_any_price_quote() -> None:
     class Config:
         price_floor_cents = 0
+        listing_price_cents = 0
 
     assert _enforce_floor(Config(), "最低 1000 元") == "no_floor_price"
     assert _enforce_floor(Config(), "您想多少钱？") is None
     assert _enforce_floor(Config(), "小刀可以聊聊，不包邮哦") is None
 
 
+def test_low_listing_price_has_no_room() -> None:
+    class Config:
+        price_floor_cents = 0
+        listing_price_cents = 10
+        persona = ""
+        product_info = ""
+
+    assert _enforce_floor(Config(), "0.05 元可以") == "below_floor"
+    assert _enforce_floor(Config(), "0.1 元已经是标价了") is None
+    prompt = _system_prompt(Config())
+    assert "不议价" in prompt
+    assert "0.1 元" in prompt
+
+
 def test_build_messages_maps_roles_and_appends_incoming() -> None:
     class Config:
         price_floor_cents = 0
+        listing_price_cents = 0
         persona = "小店"
         product_info = "iPhone"
 

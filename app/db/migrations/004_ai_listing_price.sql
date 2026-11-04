@@ -1,0 +1,1 @@
+ALTER TABLE ai_config ADD COLUMN listing_price_cents INTEGER NOT NULL DEFAULT 0;

@@ -38,6 +38,7 @@ export default function RulesPage() {
   const [aiTestResult, setAiTestResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [aiTesting, setAiTesting] = useState(false);
   const aiEnabled = Form.useWatch("enabled", aiForm);
+  const aiListing = Form.useWatch("listing_price_yuan", aiForm);
   const aiFloor = Form.useWatch("price_floor_yuan", aiForm);
   const aiProductInfo = Form.useWatch("product_info", aiForm);
 
@@ -47,7 +48,11 @@ export default function RulesPage() {
       .get(`/api/accounts/${accountId}/ai`)
       .then((config: any) => {
         setAiConfig(config);
-        aiForm.setFieldsValue({ ...config, price_floor_yuan: (config.price_floor_cents || 0) / 100 });
+        aiForm.setFieldsValue({
+          ...config,
+          listing_price_yuan: (config.listing_price_cents || 0) / 100,
+          price_floor_yuan: (config.price_floor_cents || 0) / 100,
+        });
       })
       .catch((error) => message.error(String(error)));
   }, [accountId, aiForm]);
@@ -120,6 +125,7 @@ export default function RulesPage() {
         model: values.model,
         persona: values.persona ?? "",
         product_info: values.product_info ?? "",
+        listing_price_cents: Math.round((values.listing_price_yuan || 0) * 100),
         price_floor_cents: Math.round((values.price_floor_yuan || 0) * 100),
         max_history: values.max_history,
         timeout_seconds: values.timeout_seconds,
@@ -191,23 +197,26 @@ export default function RulesPage() {
                   message="AI 优先、关键词兜底"
                   description="AI 启用且 Key 有效时由 AI 回复；超时、报错或报价越界时自动回退到关键词规则与默认回复。"
                 />
-                {aiEnabled && (!aiFloor || !(aiProductInfo || "").trim()) && (
-                  <Alert
-                    type="warning"
-                    showIcon
-                    message="配置不完整，AI 回复会受限"
-                    description={[
-                      !aiFloor
-                        ? "未设置底价：AI 不会报出任何具体价格，也不会主动让价，只会向买家询问心理价位。"
-                        : "",
-                      !(aiProductInfo || "").trim()
-                        ? "未填写商品信息：AI 无法回答成色、电池、配件等具体问题，可能只会请买家稍等。"
-                        : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                  />
-                )}
+                {aiEnabled &&
+                  (!aiListing || !aiFloor || !(aiProductInfo || "").trim()) && (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message="配置不完整，AI 回复会受限"
+                      description={[
+                        !aiListing && !aiFloor
+                          ? "未填写标价/底价：AI 不知道售价，不会报任何价格，只会向买家询问心理价位。"
+                          : !aiFloor
+                            ? "未设置底价：AI 不会给出低于标价的报价，砍价时只能说明按标价出售。"
+                            : "",
+                        !(aiProductInfo || "").trim()
+                          ? "未填写商品信息：AI 无法回答成色、电池、配件等具体问题，可能只会请买家稍等。"
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    />
+                  )}
                 <Form form={aiForm} layout="vertical" onFinish={saveAi}>
                   <Form.Item name="enabled" label="启用 AI 回复" valuePropName="checked">
                     <Switch />
@@ -235,8 +244,11 @@ export default function RulesPage() {
                     />
                   </Form.Item>
                   <Space size="large" wrap>
-                    <Form.Item name="price_floor_yuan" label="底价（元），0 为不限">
-                      <InputNumber min={0} max={1000000} style={{ width: 160 }} />
+                    <Form.Item name="listing_price_yuan" label="标价（元），买家看到的售价">
+                      <InputNumber min={0} max={1000000} style={{ width: 180 }} />
+                    </Form.Item>
+                    <Form.Item name="price_floor_yuan" label="底价（元），0 表示不降价">
+                      <InputNumber min={0} max={1000000} style={{ width: 180 }} />
                     </Form.Item>
                     <Form.Item name="max_history" label="上下文条数">
                       <InputNumber min={0} max={50} style={{ width: 120 }} />

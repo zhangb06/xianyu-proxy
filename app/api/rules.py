@@ -46,6 +46,7 @@ class AIConfigBody(BaseModel):
     model: str = Field(default="deepseek-chat", min_length=1, max_length=100)
     persona: str = Field(default="", max_length=2000)
     product_info: str = Field(default="", max_length=4000)
+    listing_price_cents: int = Field(default=0, ge=0, le=100_000_000)
     price_floor_cents: int = Field(default=0, ge=0, le=100_000_000)
     max_history: int = Field(default=10, ge=0, le=50)
     timeout_seconds: int = Field(default=20, ge=3, le=120)
@@ -63,6 +64,7 @@ def _ai_payload(config) -> dict[str, object]:  # type: ignore[no-untyped-def]
         "model": config.model,
         "persona": config.persona,
         "product_info": config.product_info,
+        "listing_price_cents": config.listing_price_cents,
         "price_floor_cents": config.price_floor_cents,
         "max_history": config.max_history,
         "timeout_seconds": config.timeout_seconds,
@@ -186,6 +188,7 @@ async def put_ai_config(
         model=body.model,
         persona=body.persona,
         product_info=body.product_info,
+        listing_price_cents=body.listing_price_cents,
         price_floor_cents=body.price_floor_cents,
         max_history=body.max_history,
         timeout_seconds=body.timeout_seconds,
