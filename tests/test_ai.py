@@ -5,7 +5,14 @@ from typing import Any
 
 import pytest
 
-from app.ai.replier import AIReply, AIReplyService, _build_messages, _enforce_floor, _system_prompt
+from app.ai.items import ItemInfoService
+from app.ai.replier import (
+    AIReply,
+    AIReplyService,
+    _build_messages,
+    _enforce_floor,
+    _system_prompt,
+)
 from app.core.timeutil import utc_now_ms
 from app.db.engine import Database
 from app.db.repo.accounts import AccountRepo
@@ -13,6 +20,7 @@ from app.db.repo.ai import AIConfigRepo
 from app.db.repo.messages import MessageRepo
 from app.db.repo.rules import KeywordRuleRepo
 from app.pipeline.engine import ReplyPipeline, SendResult
+from app.protocol.items import ItemInfo
 
 
 class StubSender:
@@ -29,10 +37,12 @@ class StubAI:
         self.ok = ok
         self.text = text
         self.error = error
-        self.calls: list[tuple[int, str, str]] = []
+        self.calls: list[tuple[int, str, str, str]] = []
 
-    async def generate(self, account_id: int, chat_id: str, incoming_text: str) -> AIReply:
-        self.calls.append((account_id, chat_id, incoming_text))
+    async def generate(
+        self, account_id: int, chat_id: str, incoming_text: str, item_id: str = ""
+    ) -> AIReply:
+        self.calls.append((account_id, chat_id, incoming_text, item_id))
         if self.ok:
             return AIReply(ok=True, text=self.text, latency_ms=120)
         return AIReply(ok=False, error=self.error, latency_ms=50)
@@ -190,7 +200,7 @@ async def test_pipeline_prefers_ai(tmp_path: Path) -> None:
 
         assert outcome == "replied"
         assert sender.calls == [("buyer1", "buyer1", "最低 1300 元")]
-        assert ai.calls == [(account.id, "buyer1", "这个能便宜点吗")]
+        assert ai.calls == [(account.id, "buyer1", "这个能便宜点吗", "42")]
         stored = await MessageRepo(db).list_by_chat(account.id, "buyer1")
         assert any(m.direction == "out" and m.text == "最低 1300 元" for m in stored)
         events = await db.fetch_all("SELECT type FROM event_log WHERE type = 'ai.reply'")
@@ -224,5 +234,62 @@ async def test_ai_service_disabled_returns_reason(tmp_path: Path) -> None:
         result = await service.generate(1, "buyer1", "在吗")
         assert result.ok is False
         assert result.error == "disabled"
+    finally:
+        await db.close()
+
+
+_ITEM = ItemInfo(
+    item_id="42",
+    title="【最新小说合集】",
+    description="拍下自动发货，解压即用",
+    price_cents=10,
+    status="在售",
+)
+
+
+def test_prompt_carries_item_info_and_no_fabrication() -> None:
+    class Config:
+        price_floor_cents = 0
+        listing_price_cents = 0
+        persona = ""
+        product_info = ""
+
+    prompt = _system_prompt(Config(), _ITEM)
+    assert "【最新小说合集】" in prompt
+    assert "拍下自动发货" in prompt
+    assert "禁止编造" in prompt
+    assert "0.1 元" in prompt
+
+
+def test_item_price_used_for_listing_and_floor() -> None:
+    class Config:
+        price_floor_cents = 0
+        listing_price_cents = 0
+        persona = ""
+        product_info = ""
+
+    assert _enforce_floor(Config(), "0.05 元卖吗", 10) == "below_floor"
+    assert _enforce_floor(Config(), "0.1 元可以", 10) is None
+    assert "不议价" in _system_prompt(Config(), _ITEM)
+
+
+async def test_item_service_caches_by_account_and_item(tmp_path: Path) -> None:
+    db = Database(tmp_path / "test.db")
+    await db.connect()
+    try:
+        repo = AccountRepo(db, "secret")
+        account = await repo.upsert("10001")
+        await repo.save_cookie(account.id, {"cookie2": "x"})
+        calls: list[str] = []
+
+        async def fetcher(jar: Any, item_id: str, *, proxy: str = "") -> ItemInfo:
+            calls.append(item_id)
+            return _ITEM
+
+        service = ItemInfoService(repo, ttl=60, fetcher=fetcher)
+        assert await service.get(account.id, "42") == _ITEM
+        assert await service.get(account.id, "42") == _ITEM
+        assert calls == ["42"]
+        assert await service.get(account.id, "") is None
     finally:
         await db.close()

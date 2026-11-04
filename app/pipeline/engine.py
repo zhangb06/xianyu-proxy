@@ -173,7 +173,7 @@ class ReplyPipeline:
     ) -> tuple[str, str] | None:
         """AI 优先；未启用或调用失败时回退关键词与默认话术。"""
         if self.ai is not None:
-            ai_reply = await self.ai.generate(account_id, chat.chat_id, text)
+            ai_reply = await self.ai.generate(account_id, chat.chat_id, text, chat.item_id)
             if ai_reply.ok:
                 await log_event(
                     self.db,

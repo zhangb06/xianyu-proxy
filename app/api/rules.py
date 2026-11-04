@@ -120,6 +120,23 @@ async def create_rule(
     }
 
 
+@router.get("/accounts/{account_id}/items/{item_id}")
+async def get_item_info(
+    account_id: int, item_id: str, request: Request, _session=Depends(require_admin)
+) -> dict[str, object]:
+    await _account_or_404(request, account_id)
+    info = await request.app.state.supervisor.items.get(account_id, item_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail="商品详情获取失败")
+    return {
+        "item_id": info.item_id,
+        "title": info.title,
+        "description": info.description,
+        "price_cents": info.price_cents,
+        "status": info.status,
+    }
+
+
 @router.patch("/rules/{rule_id}")
 async def patch_rule(
     rule_id: int, body: RulePatch, request: Request, _session=Depends(require_write)

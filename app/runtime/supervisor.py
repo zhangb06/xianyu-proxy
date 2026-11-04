@@ -4,6 +4,7 @@ import asyncio
 
 from loguru import logger
 
+from app.ai.items import ItemInfoService
 from app.ai.replier import AIReplyService
 from app.config import Settings
 from app.db.engine import Database
@@ -18,7 +19,8 @@ class Supervisor:
     def __init__(self, db: Database, settings: Settings, secret: str) -> None:
         self.settings = settings
         self.accounts = AccountRepo(db, secret)
-        self.ai = AIReplyService(db, secret)
+        self.items = ItemInfoService(self.accounts)
+        self.ai = AIReplyService(db, secret, self.items)
         self.pipeline = ReplyPipeline(db, self.ai)
         self.connect_semaphore = asyncio.Semaphore(max(1, settings.account_concurrency))
         self.actors: dict[int, AccountActor] = {}

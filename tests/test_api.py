@@ -12,6 +12,7 @@ from app.core.passwords import verify_password
 from app.db.repo.chats import ChatRepo
 from app.db.repo.events import log_event
 from app.main import create_app
+from app.protocol.items import ItemInfo
 
 PASSWORD = "abcdefgh"
 
@@ -224,6 +225,35 @@ def test_ai_config_api(client: TestClient, authed: tuple[TestClient, str]) -> No
     assert tested.status_code == 200
     assert tested.json()["ok"] is False
     assert tested.json()["error"] == "no_key"
+
+
+def test_item_info_api(
+    client: TestClient, authed: tuple[TestClient, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, _csrf = authed
+    account_id = _make_account(client)
+
+    async def fake_get(account_id: int, item_id: str) -> ItemInfo:
+        return ItemInfo(
+            item_id=item_id,
+            title="【最新小说合集】",
+            description="拍下自动发货",
+            price_cents=10,
+            status="在售",
+        )
+
+    monkeypatch.setattr(client.app.state.supervisor.items, "get", fake_get)
+    response = client.get(f"/api/accounts/{account_id}/items/1096185526203")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["title"] == "【最新小说合集】"
+    assert body["price_cents"] == 10
+
+    async def missing(account_id: int, item_id: str) -> None:
+        return None
+
+    monkeypatch.setattr(client.app.state.supervisor.items, "get", missing)
+    assert client.get(f"/api/accounts/{account_id}/items/1").status_code == 404
 
 
 def test_chats_api(client: TestClient, authed: tuple[TestClient, str]) -> None:

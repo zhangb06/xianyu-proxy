@@ -37,6 +37,9 @@ export default function RulesPage() {
   const [aiTestText, setAiTestText] = useState("这个能便宜点吗？最低多少钱？");
   const [aiTestResult, setAiTestResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [aiTesting, setAiTesting] = useState(false);
+  const [itemQuery, setItemQuery] = useState("");
+  const [itemInfo, setItemInfo] = useState<any>(null);
+  const [itemLoading, setItemLoading] = useState(false);
   const aiEnabled = Form.useWatch("enabled", aiForm);
   const aiListing = Form.useWatch("listing_price_yuan", aiForm);
   const aiFloor = Form.useWatch("price_floor_yuan", aiForm);
@@ -158,6 +161,23 @@ export default function RulesPage() {
     }
   };
 
+  const loadItem = async () => {
+    if (!itemQuery.trim()) {
+      message.warning("请输入商品 ID");
+      return;
+    }
+    setItemLoading(true);
+    setItemInfo(null);
+    try {
+      const info: any = await api.get(`/api/accounts/${accountId}/items/${itemQuery.trim()}`);
+      setItemInfo(info);
+    } catch (error) {
+      message.error(`读取失败：${error}`);
+    } finally {
+      setItemLoading(false);
+    }
+  };
+
   const addBlock = async (values: any) => {
     try {
       await api.post(`/api/accounts/${accountId}/blocks`, values);
@@ -210,7 +230,7 @@ export default function RulesPage() {
                             ? "未设置底价：AI 不会给出低于标价的报价，砍价时只能说明按标价出售。"
                             : "",
                         !(aiProductInfo || "").trim()
-                          ? "未填写商品信息：AI 无法回答成色、电池、配件等具体问题，可能只会请买家稍等。"
+                          ? "未填写商品补充信息：AI 默认使用自动读取的商品标题与描述，补充信息可提高回答准确度。"
                           : "",
                       ]
                         .filter(Boolean)
@@ -236,11 +256,14 @@ export default function RulesPage() {
                   <Form.Item name="persona" label="店铺/卖家信息">
                     <Input.TextArea rows={2} maxLength={2000} placeholder="例如：个人自用数码，只做正品，不议价太狠" />
                   </Form.Item>
-                  <Form.Item name="product_info" label="商品信息（AI 回答依据）">
+                  <Form.Item
+                    name="product_info"
+                    label="商品补充信息（可选，自动读取商品标题/描述后追加）"
+                  >
                     <Input.TextArea
                       rows={4}
                       maxLength={4000}
-                      placeholder="例如：iPhone 13 128G，国行，九成新，电池 88%，配件齐全，标价 1600 元"
+                      placeholder="例如：国行正品，电池 88%，配件齐全；或补充自动描述里没有的成色/发货方式"
                     />
                   </Form.Item>
                   <Space size="large" wrap>
@@ -261,6 +284,28 @@ export default function RulesPage() {
                     保存
                   </Button>
                 </Form>
+                <Card size="small" title="商品详情（自动读取，AI 回答依据）">
+                  <Space direction="vertical" style={{ width: "100%" }}>
+                    <Space.Compact style={{ width: "100%" }}>
+                      <Input
+                        value={itemQuery}
+                        onChange={(event) => setItemQuery(event.target.value)}
+                        placeholder="商品 ID，例如 1096185526203"
+                      />
+                      <Button onClick={loadItem} loading={itemLoading}>
+                        读取
+                      </Button>
+                    </Space.Compact>
+                    {itemInfo && (
+                      <Alert
+                        type="success"
+                        showIcon
+                        message={`${itemInfo.title}（标价 ${(itemInfo.price_cents / 100).toFixed(2)} 元，${itemInfo.status}）`}
+                        description={itemInfo.description || "无描述"}
+                      />
+                    )}
+                  </Space>
+                </Card>
                 <Card size="small" title="连通性测试">
                   <Space direction="vertical" style={{ width: "100%" }}>
                     <Input.TextArea
