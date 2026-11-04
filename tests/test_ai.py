@@ -126,7 +126,17 @@ def test_floor_rejects_low_price() -> None:
 
     assert _enforce_floor(Config(), "最低 1000 元可以") == "below_floor"
     assert _enforce_floor(Config(), "给您 1200 元包邮") is None
+    assert _enforce_floor(Config(), "¥1000 可以出") == "below_floor"
     assert _enforce_floor(Config(), "好的，稍等") is None
+
+
+def test_no_floor_blocks_any_price_quote() -> None:
+    class Config:
+        price_floor_cents = 0
+
+    assert _enforce_floor(Config(), "最低 1000 元") == "no_floor_price"
+    assert _enforce_floor(Config(), "您想多少钱？") is None
+    assert _enforce_floor(Config(), "小刀可以聊聊，不包邮哦") is None
 
 
 def test_build_messages_maps_roles_and_appends_incoming() -> None:

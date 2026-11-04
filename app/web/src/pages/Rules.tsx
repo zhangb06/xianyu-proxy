@@ -37,6 +37,9 @@ export default function RulesPage() {
   const [aiTestText, setAiTestText] = useState("这个能便宜点吗？最低多少钱？");
   const [aiTestResult, setAiTestResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [aiTesting, setAiTesting] = useState(false);
+  const aiEnabled = Form.useWatch("enabled", aiForm);
+  const aiFloor = Form.useWatch("price_floor_yuan", aiForm);
+  const aiProductInfo = Form.useWatch("product_info", aiForm);
 
   const loadAi = useCallback(() => {
     if (accountId === null) return;
@@ -186,8 +189,25 @@ export default function RulesPage() {
                   type="info"
                   showIcon
                   message="AI 优先、关键词兜底"
-                  description="AI 启用且 Key 有效时由 AI 回复；超时、报错或报价低于底价时自动回退到关键词规则与默认回复。"
+                  description="AI 启用且 Key 有效时由 AI 回复；超时、报错或报价越界时自动回退到关键词规则与默认回复。"
                 />
+                {aiEnabled && (!aiFloor || !(aiProductInfo || "").trim()) && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    message="配置不完整，AI 回复会受限"
+                    description={[
+                      !aiFloor
+                        ? "未设置底价：AI 不会报出任何具体价格，也不会主动让价，只会向买家询问心理价位。"
+                        : "",
+                      !(aiProductInfo || "").trim()
+                        ? "未填写商品信息：AI 无法回答成色、电池、配件等具体问题，可能只会请买家稍等。"
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  />
+                )}
                 <Form form={aiForm} layout="vertical" onFinish={saveAi}>
                   <Form.Item name="enabled" label="启用 AI 回复" valuePropName="checked">
                     <Switch />

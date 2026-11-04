@@ -153,31 +153,47 @@ def _system_prompt(config: AIConfig) -> str:
         "你是一名闲鱼二手交易店铺的客服，用中文替卖家回复买家。",
         "规则：",
         "1. 回复简短自然，1-3 句话，不超过 60 字，不要使用 Markdown 或列表。",
-        "2. 热情但不过度承诺；不确定的信息请买家稍等，人工会尽快回复。",
-        "3. 不承诺具体发货时间，不引导站外交易，不索要手机号、微信等隐私信息。",
-        "4. 买家询问商品细节时只依据下方商品信息回答，不要编造参数或库存。",
+        "2. 每条回复尽量推进对话：回答后追问一个具体问题（如买家心理价位、使用需求），不要空泛应付。",
+        "3. 不知道的信息请买家稍等，由人工确认；不承诺具体发货时间，不引导站外交易，"
+        "不索要手机号、微信等隐私信息。",
+        "4. 只依据下方商品信息回答，不编造参数、库存、成色或价格是否合理；"
+        "没有依据时不要做评价性断言。",
+        "5. 不使用「亲」等客服腔，按卖家人设自然说话，语气友好但不卑微。",
     ]
     if config.price_floor_cents > 0:
         floor = config.price_floor_cents / 100
-        parts.append(f"5. 议价时报价不得低于 {floor:.2f} 元，可以在此价格之上小幅让步。")
-    if config.persona.strip():
-        parts.append(f"店铺信息：{config.persona.strip()}")
+        parts.append(
+            f"6. 议价时报价不得低于 {floor:.2f} 元，可以在此价格之上小幅让步；"
+            "买家出价过低时礼貌拒绝并说明已接近最低价。"
+        )
+    else:
+        parts.append(
+            "6. 未配置底价：不要主动邀请砍价，不要报出任何具体金额或承诺让价/包邮；"
+            "先询问买家的心理价位，并说明需要和卖家确认。"
+        )
     if config.product_info.strip():
         parts.append(f"商品信息：{config.product_info.strip()}")
+    else:
+        parts.append("商品信息：暂无。不要描述商品细节，也不要评论价格高低。")
+    if config.persona.strip():
+        parts.append(f"卖家/店铺信息：{config.persona.strip()}")
     return "\n".join(parts)
 
 
 def _enforce_floor(config: AIConfig, text: str) -> str | None:
-    """回复中出现低于底价的金额时不外发，交给关键词/默认话术兜底。"""
-    if config.price_floor_cents <= 0:
-        return None
-    floor_yuan = config.price_floor_cents / 100
+    """拦截越界回复：低于底价的报价，以及无底价时的一切金额/让价承诺。"""
+    amounts = []
     for match in _MONEY.finditer(text):
         raw = match.group(1) or match.group(2)
         try:
-            amount = float(raw)
+            amounts.append(float(raw))
         except (TypeError, ValueError):
             continue
-        if amount < floor_yuan:
-            return "below_floor"
+
+    if config.price_floor_cents <= 0:
+        return "no_floor_price" if amounts else None
+
+    floor_yuan = config.price_floor_cents / 100
+    if any(amount < floor_yuan for amount in amounts):
+        return "below_floor"
     return None
