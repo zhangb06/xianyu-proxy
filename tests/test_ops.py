@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,12 @@ from app.db.repo.delivery import OutboxTask, iso_after
 from app.db.repo.items import ItemDeliveryRepo, ItemRepo
 from app.db.repo.ops import AccountOpsRepo
 from app.db.repo.rules import BlockRepo
-from app.delivery.polish import PolishError, PolishService
+from app.delivery.polish import (
+    AUTO_POLISH_WINDOW,
+    PolishError,
+    PolishService,
+    auto_polish_target,
+)
 from app.delivery.service import (
     FLOWER_DELAY_SECONDS,
     FLOWER_TEXT,
@@ -238,10 +244,18 @@ async def test_polish_uses_shared_per_account_lock(tmp_path: Path) -> None:
         await db.close()
 
 
-async def test_run_auto_skips_when_disabled_and_processes_enabled(
+def test_auto_polish_target_stable_within_window() -> None:
+    first = auto_polish_target(1, "2026-11-10")
+    assert first == auto_polish_target(1, "2026-11-10")
+    assert first.tzinfo is not None
+    assert AUTO_POLISH_WINDOW[0] <= first.hour < AUTO_POLISH_WINDOW[1]
+    assert first != auto_polish_target(2, "2026-11-10")
+
+
+async def test_run_auto_waits_for_daily_random_target_then_runs_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("app.delivery.polish.POLISH_SPACING_SECONDS", 0)
+    monkeypatch.setattr("app.delivery.polish.POLISH_SPACING_RANGE", (0.0, 0.0))
     db, account, accounts = await _setup(tmp_path)
     try:
         await _polishable_item(db, account.id, "1")
@@ -250,23 +264,39 @@ async def test_run_auto_skips_when_disabled_and_processes_enabled(
         await ItemRepo(db).ensure(account.id, "3", status="已售出")
         stub = StubPolisher()
         service = PolishService(db, accounts, polisher=stub)
+        today = beijing_today()
+        target = auto_polish_target(account.id, today)
 
-        off = await service.run_auto()
+        off = await service.run_auto(now=target)
         assert off.accounts == 0 and stub.calls == []
 
         await AccountOpsRepo(db).set(account.id, auto_polish=True)
-        result = await service.run_auto()
+        early = await service.run_auto(now=target - timedelta(seconds=30))
+        assert early.accounts == 0 and stub.calls == []
 
+        result = await service.run_auto(now=target + timedelta(seconds=1))
         assert result.accounts == 1 and result.polished == 1
         assert [item_id for item_id, _ in stub.calls] == ["1"]
+
+        again = await service.run_auto(now=target + timedelta(hours=2))
+        assert again.accounts == 0 and len(stub.calls) == 1
+        ops = await AccountOpsRepo(db).get(account.id)
+        assert ops.polish_ran_date == today
+
+        await ItemRepo(db).set_polish(account.id, "1", polished_at="")
+        tomorrow_day = (target + timedelta(days=1)).date().isoformat()
+        next_target = auto_polish_target(account.id, tomorrow_day)
+        tomorrow = await service.run_auto(now=next_target + timedelta(seconds=1))
+        assert tomorrow.accounts == 1
+        assert len(stub.calls) == 2
     finally:
         await db.close()
 
 
-async def test_run_auto_backs_off_after_auth_error(
+async def test_run_auto_auth_error_keeps_same_day_retry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("app.delivery.polish.POLISH_SPACING_SECONDS", 0)
+    monkeypatch.setattr("app.delivery.polish.POLISH_SPACING_RANGE", (0.0, 0.0))
     db, account, accounts = await _setup(tmp_path)
     try:
         await _polishable_item(db, account.id, "1")
@@ -274,14 +304,49 @@ async def test_run_auto_backs_off_after_auth_error(
         await AccountOpsRepo(db).set(account.id, auto_polish=True)
         stub = StubPolisher(error=MtopError("FAIL_SYS_TOKEN_EXPIRED::令牌过期"))
         service = PolishService(db, accounts, polisher=stub)
+        target = auto_polish_target(account.id, beijing_today()) + timedelta(seconds=1)
 
-        first = await service.run_auto()
+        first = await service.run_auto(now=target)
 
         assert first.accounts == 1 and first.failed == 0
         assert len(stub.calls) == 1
-        second = await service.run_auto()
-        assert second.accounts == 0
+        ops = await AccountOpsRepo(db).get(account.id)
+        assert ops.polish_ran_date == ""
+        blocked = await service.run_auto(now=target)
+        assert blocked.accounts == 0
         assert len(stub.calls) == 1
+    finally:
+        await db.close()
+
+
+
+async def test_next_check_sleeps_until_next_window_after_daily_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("app.delivery.polish.POLISH_SPACING_RANGE", (0.0, 0.0))
+    db, account, accounts = await _setup(tmp_path)
+    try:
+        await _polishable_item(db, account.id, "1")
+        await AccountOpsRepo(db).set(account.id, auto_polish=True)
+        service = PolishService(db, accounts, polisher=StubPolisher())
+        target = auto_polish_target(account.id, beijing_today())
+
+        before = await service.next_check_seconds(now=target - timedelta(hours=1))
+        assert 30 < before <= 3600
+
+        await service.run_auto(now=target + timedelta(seconds=1))
+
+        after = await service.next_check_seconds(now=target + timedelta(seconds=1))
+        assert after > 8 * 3600
+    finally:
+        await db.close()
+
+
+async def test_next_check_is_hourly_without_enabled_auto_polish(tmp_path: Path) -> None:
+    db, _account, accounts = await _setup(tmp_path)
+    try:
+        service = PolishService(db, accounts, polisher=StubPolisher())
+        assert await service.next_check_seconds() == 3600.0
     finally:
         await db.close()
 

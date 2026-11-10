@@ -96,6 +96,7 @@ async def update_account_ops(
     ops = await request.app.state.supervisor.ops.set(
         account_id, auto_polish=body.auto_polish, flower_enabled=body.flower_enabled
     )
+    request.app.state.supervisor.polish.wake()
     return serialize_ops(ops)
 
 

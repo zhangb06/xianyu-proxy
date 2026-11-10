@@ -416,7 +416,11 @@ available → claimed（订单占用） → used（发送成功）
 - `SUCCESS`、`IDLEITEM_POLISH_AGAIN`、`POLISH_DUPLICATE` 及明确的“已经擦亮/一天只能擦亮一次”返回均视为当天已完成；`UNSUPPORTED_ITEM_STATUS`（已下架）不重试并等待下次商品同步纠正状态，其他错误透出原因。
 - 每日额度按**北京时间自然日**判断（与原系统日切一致），不是滚动 24 小时：`polished_at` 存 UTC，比较时换算 Asia/Shanghai 日期；跨天后允许再次擦亮。
 - 商品页提供单商品立即擦亮按钮与最近擦亮时间/失败原因；账号级自动擦亮开关放在账号编辑弹窗。
-- 后台在 Supervisor 增加常驻擦亮循环（每 300 秒一次轻量查询，无账号开启时立即跳过）：遍历在售且当天未擦亮的商品，同账号请求间隔 ≥2 秒；认证类错误按账号退避，不连续重试。
+- 后台在 Supervisor 增加常驻擦亮循环：每个账号每天在北京时间 09:00–22:00 窗口内按 `(账号, 日期)`
+  确定性随机选取一个时刻执行一轮，避免固定节奏；每账号每天最多一轮（`polish_ran_date`），
+  同账号商品间隔 2–6 秒随机；认证类错误按账号退避且当天可重试。
+- 循环按下次到期时间休眠：到点前睡到目标时刻，当天全部账号完成后直接睡到次日 09:00，不再空转；
+  账号开关、重新扫码等变更会唤醒循环立即重算（无开启账号时每小时轻量自查一次）。
 - 手动擦亮与自动擦亮共享 PolishService 的每账号锁和当天完成判断；当天已擦亮时手动接口返回“今天已擦亮”而非报错；失败不伪造成功时间；Cookie 有变化时写回账号凭据。
 
 ### 18.3 要小红花
@@ -433,7 +437,7 @@ available → claimed（订单占用） → used（发送成功）
 - 新表 `account_ops`（account_id 主键）：`auto_polish`、`flower_enabled`，默认关闭；API `GET/PUT /accounts/{id}/ops`。
 - `item` 增列：`polished_at`、`polish_error`；API `POST /accounts/{id}/items/{item_id}/polish`；商品列表 payload 携带两列。
 - `orders` 增列：`flower_status`（空/pending/sent/skipped/failed）、`flower_at`、`flower_error`；outbox 新任务类型 `flower`，去重键 `flower:{account_id}:{order_no}`；订单 payload 携带三列。
-- 常量而非新增配置项：循环间隔 300 秒、同账号商品间隔 2 秒、小红花延迟 1800 秒、重试沿用 outbox 现有上限。
+- 常量而非新增配置项：循环间隔 60 秒、随机时间窗 09:00–22:00、同账号商品间隔 2–6 秒随机、小红花延迟 1800 秒、重试沿用 outbox 现有上限。
 - 手动擦亮只要求账号有 Cookie（HTTP 接口独立于 WS 在线状态）；自动化循环只处理启用且有 Cookie 的账号。
 
 ### 18.5 验收与协议前置条件

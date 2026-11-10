@@ -12,6 +12,7 @@ class AccountOps:
     account_id: int
     auto_polish: bool
     flower_enabled: bool
+    polish_ran_date: str = ""
 
     @classmethod
     def from_row(cls, row: Any) -> AccountOps:
@@ -19,6 +20,7 @@ class AccountOps:
             account_id=int(row["account_id"]),
             auto_polish=bool(row["auto_polish"]),
             flower_enabled=bool(row["flower_enabled"]),
+            polish_ran_date=str(row["polish_ran_date"]),
         )
 
 
@@ -53,6 +55,14 @@ class AccountOpsRepo:
             (account_id, int(polish), int(flower), utc_now_iso()),
         )
         return await self.get(account_id)
+
+    async def set_polish_ran_date(self, account_id: int, day: str) -> None:
+        await self.db.write(
+            "INSERT INTO account_ops (account_id, polish_ran_date, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT (account_id) DO UPDATE SET "
+            "polish_ran_date = excluded.polish_ran_date, updated_at = excluded.updated_at",
+            (account_id, day, utc_now_iso()),
+        )
 
     async def auto_polish_account_ids(self) -> list[int]:
         rows = await self.db.fetch_all(

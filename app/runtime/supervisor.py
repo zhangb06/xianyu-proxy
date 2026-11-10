@@ -93,6 +93,7 @@ class Supervisor:
                     raise
                 except Exception:
                     logger.exception("商品自动擦亮失败")
+                    delay = AUTO_POLISH_INTERVAL_SECONDS
                 else:
                     if result.accounts:
                         logger.info(
@@ -100,7 +101,12 @@ class Supervisor:
                             f"polished={result.polished} already={result.already} "
                             f"failed={result.failed}"
                         )
-                await asyncio.sleep(AUTO_POLISH_INTERVAL_SECONDS)
+                    try:
+                        delay = await self.polish.next_check_seconds()
+                    except Exception:
+                        logger.exception("计算商品擦亮下次检查时间失败")
+                        delay = AUTO_POLISH_INTERVAL_SECONDS
+                await self.polish.wait_for_wake(delay)
         except asyncio.CancelledError:
             pass
 
@@ -165,6 +171,7 @@ class Supervisor:
         for account_id in list(self.actors):
             if account_id not in enabled:
                 await self.stop_account(account_id)
+        self.polish.wake()
 
     def sender_for(self, account_id: int) -> AccountActor | None:
         return self.actors.get(account_id)

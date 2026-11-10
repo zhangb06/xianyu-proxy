@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import random
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from datetime import time as dtime
 
 from loguru import logger
 
-from app.core.timeutil import beijing_date, beijing_today, utc_now_iso
+from app.core.timeutil import beijing_date, beijing_now, beijing_today, utc_now_iso
 from app.db.engine import Database
 from app.db.repo.accounts import Account, AccountRepo
 from app.db.repo.items import Item, ItemRepo
@@ -16,10 +19,15 @@ from app.protocol.listing import STATUS_ON_SALE
 from app.protocol.mtop import CookieJar, MtopError
 from app.protocol.polish import PolishResult, polish_item
 
-AUTO_POLISH_INTERVAL_SECONDS = 300.0
-POLISH_SPACING_SECONDS = 2.0
+AUTO_POLISH_INTERVAL_SECONDS = 60.0
+AUTO_POLISH_WINDOW = (9, 22)
+POLISH_SPACING_RANGE = (2.0, 6.0)
 AUTH_BACKOFF_SECONDS = 1800.0
+IDLE_RECHECK_SECONDS = 3600.0
+BLOCKED_RECHECK_SECONDS = 1800.0
 AUTO_POLISH_LIMIT = 1000
+
+_BEIJING = timezone(timedelta(hours=8))
 
 _AUTH_MARKERS = (
     "FAIL_SYS_TOKEN",
@@ -43,6 +51,14 @@ class PolishError(RuntimeError):
 
 def is_auth_error(message: str) -> bool:
     return any(marker in message for marker in _AUTH_MARKERS)
+
+
+def auto_polish_target(account_id: int, day: str) -> datetime:
+    """按 (账号, 北京日期) 确定性随机选取当天擦亮时刻，避免固定节奏。"""
+    start = datetime.fromisoformat(day).replace(hour=AUTO_POLISH_WINDOW[0], tzinfo=_BEIJING)
+    span = (AUTO_POLISH_WINDOW[1] - AUTO_POLISH_WINDOW[0]) * 3600
+    offset = random.Random(f"polish-target:{account_id}:{day}").randrange(span)
+    return start + timedelta(seconds=offset)
 
 
 @dataclass(slots=True)
@@ -78,6 +94,53 @@ class PolishService:
         self._polisher = polisher
         self._locks: dict[int, asyncio.Lock] = {}
         self._backoff: dict[int, float] = {}
+        self._wake = asyncio.Event()
+
+    def wake(self) -> None:
+        """账号开关/配置变化时唤醒循环，立即重新计算下次检查时间。"""
+        self._wake.set()
+
+    async def wait_for_wake(self, timeout: float) -> None:
+        self._wake.clear()
+        try:
+            await asyncio.wait_for(self._wake.wait(), timeout=timeout)
+        except TimeoutError:
+            pass
+
+    async def next_check_seconds(self, *, now: datetime | None = None) -> float:
+        """按各账号下次到期时间计算休眠时长；当天全部完成后睡到次日窗口开启。"""
+        moment = now or beijing_now()
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=_BEIJING)
+        today = moment.date().isoformat()
+        account_ids = await self.ops.auto_polish_account_ids()
+        soonest: float | None = None
+        for account_id in account_ids:
+            ops = await self.ops.get(account_id)
+            if ops.polish_ran_date == today:
+                continue
+            backoff = self._backoff.get(account_id, 0) - time.monotonic()
+            if backoff > 0:
+                wait = backoff
+            else:
+                target = auto_polish_target(account_id, today)
+                wait = (
+                    (target - moment).total_seconds()
+                    if moment < target
+                    else BLOCKED_RECHECK_SECONDS
+                )
+            soonest = wait if soonest is None else min(soonest, wait)
+        if soonest is None:
+            if not account_ids:
+                soonest = IDLE_RECHECK_SECONDS
+            else:
+                tomorrow = datetime.combine(
+                    moment.date() + timedelta(days=1),
+                    dtime(AUTO_POLISH_WINDOW[0]),
+                    tzinfo=_BEIJING,
+                )
+                soonest = (tomorrow - moment).total_seconds()
+        return max(30.0, min(soonest, 86400.0))
 
     def _lock(self, account_id: int) -> asyncio.Lock:
         lock = self._locks.get(account_id)
@@ -87,8 +150,8 @@ class PolishService:
         return lock
 
     @staticmethod
-    def _polished_today(item: Item) -> bool:
-        return bool(item.polished_at) and beijing_date(item.polished_at) == beijing_today()
+    def _polished_today(item: Item, today: str | None = None) -> bool:
+        return bool(item.polished_at) and beijing_date(item.polished_at) == (today or beijing_today())
 
     async def polish(self, account: Account, item_id: str) -> PolishOutcome:
         async with self._lock(account.id):
@@ -134,14 +197,23 @@ class PolishService:
                 item_id=item_id, ok=False, offline=result.offline, message=result.message
             )
 
-    async def run_auto(self) -> PolishRunResult:
-        """遍历开启自动擦亮的启用账号，当天未擦亮的在售商品逐个擦亮。"""
+    async def run_auto(self, *, now: datetime | None = None) -> PolishRunResult:
+        """每个开启自动擦亮的账号，每天在 09:00-22:00 的随机时刻擦一轮。"""
         summary = PolishRunResult()
         account_ids = await self.ops.auto_polish_account_ids()
         if not account_ids:
             return summary
+        moment = now or beijing_now()
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=_BEIJING)
+        today = moment.date().isoformat()
         for account_id in account_ids:
             if self._backoff.get(account_id, 0) > time.monotonic():
+                continue
+            ops = await self.ops.get(account_id)
+            if ops.polish_ran_date == today:
+                continue
+            if moment < auto_polish_target(account_id, today):
                 continue
             account = await self.accounts.get(account_id)
             if account is None or not account.enabled:
@@ -149,18 +221,23 @@ class PolishService:
             if not await self.accounts.load_cookie(account_id):
                 continue
             items = await self.repo.list(account_id, status=STATUS_ON_SALE, limit=AUTO_POLISH_LIMIT)
-            pending = [item for item in items if not self._polished_today(item)]
+            pending = [item for item in items if not self._polished_today(item, today)]
+            await self.ops.set_polish_ran_date(account_id, today)
             if not pending:
                 continue
             summary.accounts += 1
+            rng = random.Random(f"polish-spacing:{account_id}:{today}")
+            auth_failed = False
             for index, item in enumerate(pending):
                 if index:
-                    await asyncio.sleep(POLISH_SPACING_SECONDS)
+                    low, high = POLISH_SPACING_RANGE
+                    await asyncio.sleep(rng.uniform(low, high))
                 try:
                     outcome = await self.polish(account, item.item_id)
                 except PolishError as exc:
                     if exc.auth:
                         self._backoff[account_id] = time.monotonic() + AUTH_BACKOFF_SECONDS
+                        auth_failed = True
                         logger.warning(f"账号 {account_id} 擦亮登录态失效，退避重试: {exc}")
                         break
                     summary.failed += 1
@@ -175,4 +252,6 @@ class PolishService:
                     summary.already += 1
                 else:
                     summary.polished += 1
+            if auth_failed:
+                await self.ops.set_polish_ran_date(account_id, "")
         return summary

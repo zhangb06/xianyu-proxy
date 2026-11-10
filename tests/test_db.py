@@ -43,7 +43,7 @@ async def test_migration_creates_p0_tables(tmp_path: Path) -> None:
             "account_ops",
         } <= names
         version = await db.fetch_one("PRAGMA user_version")
-        assert int(version[0]) == 7
+        assert int(version[0]) == 8
     finally:
         await db.close()
 
