@@ -24,6 +24,7 @@ class _ActiveQR:
     session: QRSession
     created_at: float
     last_poll: float
+    account_id: int | None = None
 
 
 class QRLoginManager:
@@ -34,14 +35,18 @@ class QRLoginManager:
         self.supervisor = supervisor
         self._active: dict[str, _ActiveQR] = {}
 
-    async def start(self, *, timeout: float = 30.0) -> dict[str, Any]:
+    async def start(self, *, timeout: float = 30.0, account_id: int | None = None) -> dict[str, Any]:
         self._sweep()
         if len(self._active) >= MAX_SESSIONS:
             raise QRLoginError("同时进行的扫码登录过多，请稍后再试")
         client = QRLogin(timeout=timeout)
         session = await client.generate()
         self._active[session.session_id] = _ActiveQR(
-            client=client, session=session, created_at=time.monotonic(), last_poll=0.0
+            client=client,
+            session=session,
+            created_at=time.monotonic(),
+            last_poll=0.0,
+            account_id=account_id,
         )
         return {"session_id": session.session_id, "qr": data_url(session)}
 
@@ -63,17 +68,29 @@ class QRLoginManager:
         session = entry.session
         if session.status == "success":
             self._active.pop(session_id, None)
-            return await self._complete(session)
+            return await self._complete(session, entry.account_id)
         if session.status == "verification_required":
             self._active.pop(session_id, None)
             return {"state": "verification_required", "url": session.verification_url or ""}
         return {"state": session.status}
 
-    async def _complete(self, session: QRSession) -> dict[str, Any]:
+    async def _complete(self, session: QRSession, account_id: int | None = None) -> dict[str, Any]:
         unb = session.unb or str(session.jar.get("unb") or "")
         if not unb:
             await self._log(None, "login.no_unb", "error", {})
             return {"state": "error", "message": "登录成功但未取得 unb"}
+        if account_id is not None:
+            target = await self.accounts.get(account_id)
+            if target is None:
+                return {"state": "error", "message": "要重新登录的账号已不存在"}
+            if target.xianyu_id != unb:
+                await self._log(
+                    account_id, "login.mismatch", "warning", {"expected": target.xianyu_id, "scanned": unb}
+                )
+                return {
+                    "state": "error",
+                    "message": f"扫码的是闲鱼号 {unb}，与要重新登录的 {target.xianyu_id} 不一致，未更新登录",
+                }
         account = await self.accounts.upsert(unb)
         await self.accounts.save_cookie(account.id, session.jar.as_dict())
         await self.accounts.set_status(account.id, "new")

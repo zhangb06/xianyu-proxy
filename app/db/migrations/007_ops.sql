@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS account_ops (
+    account_id INTEGER PRIMARY KEY REFERENCES account (id) ON DELETE CASCADE,
+    auto_polish INTEGER NOT NULL DEFAULT 0,
+    flower_enabled INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+ALTER TABLE item ADD COLUMN polished_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE item ADD COLUMN polish_error TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE orders ADD COLUMN flower_status TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN flower_at TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN flower_error TEXT NOT NULL DEFAULT '';

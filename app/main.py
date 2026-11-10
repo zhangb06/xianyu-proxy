@@ -14,6 +14,7 @@ from app import __version__
 from app.api.accounts import router as accounts_router
 from app.api.auth import router as auth_router
 from app.api.chats import router as chats_router
+from app.api.delivery import router as delivery_router
 from app.api.events import router as events_router
 from app.api.health import router as health_router
 from app.api.overview import router as overview_router
@@ -32,11 +33,16 @@ WEB_DIST = Path(__file__).parent / "web" / "dist"
 class SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):  # type: ignore[no-untyped-def]
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
         except StarletteHTTPException as exc:
-            if exc.status_code != 404:
+            if exc.status_code != 404 or path.startswith("assets/") or "." in Path(path).name:
                 raise
-            return await super().get_response("index.html", scope)
+            response = await super().get_response("index.html", scope)
+        if response.headers.get("content-type", "").startswith("text/html"):
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        elif path.startswith("assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -74,6 +80,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(overview_router, prefix="/api")
     app.include_router(rules_router, prefix="/api")
     app.include_router(chats_router, prefix="/api")
+    app.include_router(delivery_router, prefix="/api")
     app.include_router(events_router, prefix="/api")
     if WEB_DIST.is_dir():
         app.mount("/", SPAStaticFiles(directory=WEB_DIST, html=True), name="web")

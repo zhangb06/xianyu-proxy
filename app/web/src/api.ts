@@ -1,3 +1,5 @@
+import { withBase } from "./lib/base";
+
 let csrf = "";
 
 export function setCsrf(value: string) {
@@ -14,7 +16,7 @@ async function request(path: string, options: RequestInit = {}) {
   if (options.method && options.method !== "GET") {
     headers["X-CSRF-Token"] = csrf;
   }
-  const response = await fetch(path, { ...options, headers });
+  const response = await fetch(withBase(path), { ...options, headers });
   if (response.status === 401) {
     window.dispatchEvent(new Event("xy-unauthorized"));
   }

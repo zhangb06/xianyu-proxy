@@ -6,22 +6,29 @@ import {
   UserOutlined,
   MessageOutlined,
   ControlOutlined,
+  ShoppingOutlined,
+  ThunderboltOutlined,
   LogoutOutlined,
 } from "@ant-design/icons";
 import { api, setCsrf } from "./api";
+import { BASE_PATH, withBase } from "./lib/base";
 import LoginPage from "./pages/Login";
 import OverviewPage from "./pages/Overview";
 import AccountsPage from "./pages/Accounts";
 import RulesPage from "./pages/Rules";
 import ChatsPage from "./pages/Chats";
+import DeliveryPage from "./pages/Delivery";
+import ItemsPage from "./pages/Items";
 
 type AuthState = "loading" | "setup" | "login" | "ok";
 
 const MENU_ITEMS = [
   { key: "/", icon: <DashboardOutlined />, label: "总览" },
   { key: "/accounts", icon: <UserOutlined />, label: "账号" },
+  { key: "/items", icon: <ShoppingOutlined />, label: "商品" },
   { key: "/rules", icon: <ControlOutlined />, label: "规则" },
   { key: "/chats", icon: <MessageOutlined />, label: "会话" },
+  { key: "/delivery", icon: <ThunderboltOutlined />, label: "自动发货" },
 ];
 
 export default function App() {
@@ -61,14 +68,14 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={BASE_PATH || "/"}>
       <Layout style={{ minHeight: "100vh" }}>
         <Layout.Sider theme="light" width={200}>
           <div style={{ padding: 16, fontWeight: 600 }}>闲鱼 Lite</div>
           <Menu
             items={MENU_ITEMS}
-            defaultSelectedKeys={[window.location.pathname]}
-            onClick={({ key }) => (window.location.href = key)}
+            defaultSelectedKeys={[window.location.pathname.slice(BASE_PATH.length) || "/"]}
+            onClick={({ key }) => (window.location.href = withBase(key))}
           />
         </Layout.Sider>
         <Layout>
@@ -89,8 +96,10 @@ export default function App() {
             <Routes>
               <Route path="/" element={<OverviewPage />} />
               <Route path="/accounts" element={<AccountsPage />} />
+              <Route path="/items" element={<ItemsPage />} />
               <Route path="/rules" element={<RulesPage />} />
               <Route path="/chats" element={<ChatsPage />} />
+              <Route path="/delivery" element={<DeliveryPage />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Layout.Content>

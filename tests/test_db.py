@@ -32,9 +32,18 @@ async def test_migration_creates_p0_tables(tmp_path: Path) -> None:
             "block_entry",
             "ai_config",
             "ai_usage",
+            "card",
+            "card_secret",
+            "card_item",
+            "orders",
+            "delivery_rule",
+            "outbox",
+            "item",
+            "item_delivery",
+            "account_ops",
         } <= names
         version = await db.fetch_one("PRAGMA user_version")
-        assert int(version[0]) == 4
+        assert int(version[0]) == 7
     finally:
         await db.close()
 

@@ -8,6 +8,7 @@ import {
   Popconfirm,
   Select,
   Space,
+  Switch,
   Table,
   Typography,
   message,
@@ -22,7 +23,15 @@ const VERIFICATION_OPTIONS = [
   { value: "auto_fallback", label: "自动验证（失败后转人工）" },
 ];
 
-function QrLoginModal({ open, onClose }: { open: boolean; onClose: (changed: boolean) => void }) {
+function QrLoginModal({
+  open,
+  account,
+  onClose,
+}: {
+  open: boolean;
+  account: any | null;
+  onClose: (changed: boolean) => void;
+}) {
   const [qr, setQr] = useState("");
   const [state, setState] = useState("waiting");
   const [verifyUrl, setVerifyUrl] = useState("");
@@ -46,7 +55,7 @@ function QrLoginModal({ open, onClose }: { open: boolean; onClose: (changed: boo
     setVerifyUrl("");
 
     api
-      .post("/api/accounts/qr")
+      .post("/api/accounts/qr", account ? { account_id: account.id } : {})
       .then((result: any) => {
         if (cancelled) return;
         setQr(result.qr);
@@ -80,14 +89,25 @@ function QrLoginModal({ open, onClose }: { open: boolean; onClose: (changed: boo
       stopPolling();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, account?.id]);
 
   return (
-    <Modal open={open} title="扫码登录" footer={null} onCancel={() => onClose(false)} maskClosable={false}>
+    <Modal
+      open={open}
+      title={account ? `重新扫码登录 ${account.xianyu_id}` : "扫码添加账号"}
+      footer={null}
+      onCancel={() => onClose(false)}
+      maskClosable={false}
+    >
       <div style={{ textAlign: "center", minHeight: 260 }}>
         {qr && <img src={qr} alt="登录二维码" style={{ width: 220, height: 220 }} />}
         {!qr && <Typography.Text>正在获取二维码…</Typography.Text>}
         <div style={{ marginTop: 12 }}>
+          {account && (
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+              请用闲鱼号 {account.xianyu_id} 扫码；扫其他账号不会覆盖该账号登录。
+            </Typography.Paragraph>
+          )}
           {state === "waiting" && <Typography.Text>请使用闲鱼 App 扫码</Typography.Text>}
           {state === "scanned" && <Typography.Text type="success">已扫码，请在手机上确认</Typography.Text>}
           {state === "verification_required" && (
@@ -109,6 +129,7 @@ function QrLoginModal({ open, onClose }: { open: boolean; onClose: (changed: boo
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [qrOpen, setQrOpen] = useState(false);
+  const [qrTarget, setQrTarget] = useState<any | null>(null);
   const [editing, setEditing] = useState<any>(null);
   const [form] = Form.useForm();
 
@@ -144,9 +165,23 @@ export default function AccountsPage() {
     }
   };
 
+  const openEdit = async (row: any) => {
+    setEditing({ ...row, auto_polish: false, flower_enabled: false });
+    form.setFieldsValue(row);
+    try {
+      const ops: any = await api.get(`/api/accounts/${row.id}/ops`);
+      form.setFieldsValue(ops);
+      setEditing((prev: any) => (prev ? { ...prev, ...ops } : prev));
+    } catch (error) {
+      message.error(String(error));
+    }
+  };
+
   const saveEdit = async (values: any) => {
     try {
-      await api.patch(`/api/accounts/${editing.id}`, values);
+      const { auto_polish, flower_enabled, ...account } = values;
+      await api.patch(`/api/accounts/${editing.id}`, account);
+      await api.put(`/api/accounts/${editing.id}/ops`, { auto_polish, flower_enabled });
       message.success("已保存");
       setEditing(null);
       load();
@@ -159,8 +194,15 @@ export default function AccountsPage() {
     <Card
       title="账号管理"
       extra={
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setQrOpen(true)}>
-          扫码登录
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => {
+            setQrTarget(null);
+            setQrOpen(true);
+          }}
+        >
+          扫码添加
         </Button>
       }
     >
@@ -202,10 +244,13 @@ export default function AccountsPage() {
                 <Button
                   size="small"
                   onClick={() => {
-                    setEditing(row);
-                    form.setFieldsValue(row);
+                    setQrTarget(row);
+                    setQrOpen(true);
                   }}
                 >
+                  重新扫码
+                </Button>
+                <Button size="small" onClick={() => openEdit(row)}>
                   编辑
                 </Button>
                 <Popconfirm title="删除账号及其凭据、会话与消息记录？" onConfirm={() => remove(row)}>
@@ -220,6 +265,7 @@ export default function AccountsPage() {
       />
       <QrLoginModal
         open={qrOpen}
+        account={qrTarget}
         onClose={(changed) => {
           setQrOpen(false);
           if (changed) load();
@@ -241,6 +287,22 @@ export default function AccountsPage() {
           </Form.Item>
           <Form.Item name="verification_mode" label="验证模式">
             <Select options={VERIFICATION_OPTIONS} />
+          </Form.Item>
+          <Form.Item
+            name="auto_polish"
+            label="每天自动擦亮在售商品"
+            valuePropName="checked"
+            extra="按北京时间每天擦亮一次；请求间隔 2 秒，登录失效时自动暂停并退避。"
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            name="flower_enabled"
+            label="发货后自动请求小红花"
+            valuePropName="checked"
+            extra="发货消息发送成功 30 分钟后私聊买家一次；人工标记发货不触发。"
+          >
+            <Switch />
           </Form.Item>
         </Form>
       </Modal>

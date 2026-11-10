@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass
 from typing import Any
@@ -56,8 +57,8 @@ class MessageRepo:
         try:
             await self.db.write(
                 "INSERT INTO message (account_id, chat_id, msg_id, dedup_key, direction, kind, "
-                "sender_id, text, item_id, timestamp_ms, status) "
-                "VALUES (?, ?, ?, ?, 'in', ?, ?, ?, ?, ?, 'received')",
+                "sender_id, text, item_id, timestamp_ms, raw_json, status) "
+                "VALUES (?, ?, ?, ?, 'in', ?, ?, ?, ?, ?, ?, 'received')",
                 (
                     account_id,
                     parsed["chat_id"],
@@ -68,6 +69,7 @@ class MessageRepo:
                     parsed["text"],
                     parsed["item_id"],
                     int(parsed["timestamp_ms"]),
+                    _raw_json(parsed.get("raw")),
                 ),
             )
         except sqlite3.IntegrityError:
@@ -86,21 +88,40 @@ class MessageRepo:
         msg_id: str = "",
         status: str = "pending",
     ) -> int:
-        return await self.db.write_returning_id(
-            "INSERT INTO message (account_id, chat_id, msg_id, dedup_key, direction, kind, "
-            "sender_id, text, item_id, timestamp_ms, status) VALUES (?, ?, ?, ?, 'out', ?, '', ?, ?, ?, ?)",
-            (
-                account_id,
-                chat_id,
-                msg_id,
-                dedup_key,
-                kind,
-                text,
-                item_id,
-                _now_ms(),
-                status,
-            ),
+        # msg_id 为空时存 NULL：UNIQUE(account_id, msg_id) 不把多个 NULL 视为重复，
+        # 否则同一账号的第二条待发送消息会撞唯一约束。
+        stored_msg_id = msg_id or None
+        values = (
+            account_id,
+            chat_id,
+            stored_msg_id,
+            dedup_key,
+            kind,
+            text,
+            item_id,
+            _now_ms(),
+            status,
         )
+        try:
+            return await self.db.write_returning_id(
+                "INSERT INTO message (account_id, chat_id, msg_id, dedup_key, direction, kind, "
+                "sender_id, text, item_id, timestamp_ms, status) "
+                "VALUES (?, ?, ?, ?, 'out', ?, '', ?, ?, ?, ?)",
+                values,
+            )
+        except sqlite3.IntegrityError:
+            # 同 dedup_key 重试：复用原消息行，避免重复发送记录
+            row = await self.db.fetch_one(
+                "SELECT id FROM message WHERE account_id = ? AND dedup_key = ?",
+                (account_id, dedup_key),
+            )
+            if row is None:
+                raise
+            await self.db.write(
+                "UPDATE message SET text = ?, status = ?, msg_id = ? WHERE id = ?",
+                (text, status, stored_msg_id, int(row["id"])),
+            )
+            return int(row["id"])
 
     async def set_status(self, message_id: int, status: str, msg_id: str = "") -> None:
         if msg_id:
@@ -153,3 +174,12 @@ def _now_ms() -> int:
     from datetime import UTC, datetime
 
     return int(datetime.now(UTC).timestamp() * 1000)
+
+
+def _raw_json(raw: Any) -> str:
+    if not raw:
+        return ""
+    try:
+        return json.dumps(raw, ensure_ascii=False, separators=(",", ":"))[:8000]
+    except (TypeError, ValueError):
+        return ""

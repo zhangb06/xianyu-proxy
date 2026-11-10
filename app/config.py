@@ -11,8 +11,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="XY_", env_file=".env", extra="ignore")
 
     data_dir: str = ""
-    host: str = "127.0.0.1"
+    host: str = "0.0.0.0"
     port: int = 8089
+    catalog_sync_seconds: int = 600
     secret_key: str = ""
     log_level: str = "INFO"
 

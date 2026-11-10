@@ -15,6 +15,7 @@ from app.db.repo.chats import Chat, ChatRepo
 from app.db.repo.events import log_event
 from app.db.repo.messages import MessageRepo
 from app.db.repo.rules import BlockRepo, KeywordRuleRepo, ReplyConfigRepo
+from app.delivery.service import DeliveryService, is_system_notice
 
 REPLYABLE_KINDS = ("text", "image")
 
@@ -37,9 +38,15 @@ class ReplyPipeline:
     出站先落库再发送；自发消息与卡片消息只落库对账，不进回复管道。
     """
 
-    def __init__(self, db: Database, ai: AIReplyService | None = None) -> None:
+    def __init__(
+        self,
+        db: Database,
+        ai: AIReplyService | None = None,
+        deliveries: DeliveryService | None = None,
+    ) -> None:
         self.db = db
         self.ai = ai
+        self.deliveries = deliveries
         self.messages = MessageRepo(db)
         self.chats = ChatRepo(db)
         self.rules = KeywordRuleRepo(db)
@@ -63,6 +70,20 @@ class ReplyPipeline:
             return "duplicate"
         if parsed["is_self"]:
             return "self_echo"
+        if self.deliveries is not None:
+            try:
+                await self.deliveries.observe(account, chat, parsed)
+            except Exception as exc:
+                logger.warning(f"账号 {account_id} 订单事件处理失败: {exc}")
+                await log_event(
+                    self.db,
+                    type="order.observe_error",
+                    account_id=account_id,
+                    level="warning",
+                    detail={"chat_id": chat.chat_id, "error": str(exc)},
+                )
+        if is_system_notice(parsed["text"]):
+            return "system_notice"
         if parsed["kind"] not in REPLYABLE_KINDS:
             return "ignored"
 
