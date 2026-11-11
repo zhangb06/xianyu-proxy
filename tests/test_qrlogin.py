@@ -99,6 +99,7 @@ async def test_rescan_other_account_is_rejected(tmp_path: Path, fake_qr) -> None
         assert result["state"] == "error"
         assert "20002" in result["message"]
         assert "10001" in result["message"]
+        assert "请用同一账号扫码" in result["message"]
         assert await accounts.load_cookie(account.id) == {"cookie2": "old"}
         assert [row.xianyu_id for row in await accounts.list_all()] == ["10001"]
     finally:

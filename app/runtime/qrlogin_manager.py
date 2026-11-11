@@ -89,7 +89,10 @@ class QRLoginManager:
                 )
                 return {
                     "state": "error",
-                    "message": f"扫码的是闲鱼号 {unb}，与要重新登录的 {target.xianyu_id} 不一致，未更新登录",
+                    "message": (
+                        f"扫码的是闲鱼号 {unb}，不是要重新登录的 {target.xianyu_id}；"
+                        "请用同一账号扫码，本次未新增或修改账号"
+                    ),
                 }
         account = await self.accounts.upsert(unb)
         await self.accounts.save_cookie(account.id, session.jar.as_dict())

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Button,
   Card,
   Form,
@@ -35,6 +36,8 @@ function QrLoginModal({
   const [qr, setQr] = useState("");
   const [state, setState] = useState("waiting");
   const [verifyUrl, setVerifyUrl] = useState("");
+  const [errorText, setErrorText] = useState("");
+  const [attempt, setAttempt] = useState(0);
   const timerRef = useRef<number | null>(null);
 
   const stopPolling = () => {
@@ -53,6 +56,7 @@ function QrLoginModal({
     setQr("");
     setState("waiting");
     setVerifyUrl("");
+    setErrorText("");
 
     api
       .post("/api/accounts/qr", account ? { account_id: account.id } : {})
@@ -72,7 +76,7 @@ function QrLoginModal({
               onClose(true);
             } else if (status.state === "expired" || status.state === "error") {
               stopPolling();
-              message.error(status.message ?? "二维码已过期，请重新打开");
+              setErrorText(status.message ?? "二维码已过期，请重新获取");
             }
           } catch {
             // 保持轮询
@@ -89,7 +93,7 @@ function QrLoginModal({
       stopPolling();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, account?.id]);
+  }, [open, account?.id, attempt]);
 
   return (
     <Modal
@@ -105,7 +109,7 @@ function QrLoginModal({
         <div style={{ marginTop: 12 }}>
           {account && (
             <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-              请用闲鱼号 {account.xianyu_id} 扫码；扫其他账号不会覆盖该账号登录。
+              请用闲鱼号 {account.xianyu_id} 扫码；扫其他账号会被拒绝，不会新增账号或覆盖登录。
             </Typography.Paragraph>
           )}
           {state === "waiting" && <Typography.Text>请使用闲鱼 App 扫码</Typography.Text>}
@@ -119,6 +123,20 @@ function QrLoginModal({
                 </Typography.Paragraph>
               )}
             </>
+          )}
+          {errorText && (
+            <Alert
+              type="error"
+              showIcon
+              message="登录未完成"
+              description={errorText}
+              style={{ marginTop: 12, textAlign: "left" }}
+              action={
+                <Button size="small" onClick={() => setAttempt((value) => value + 1)}>
+                  重新获取二维码
+                </Button>
+              }
+            />
           )}
         </div>
       </div>

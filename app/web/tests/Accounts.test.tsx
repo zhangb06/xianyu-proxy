@@ -174,7 +174,41 @@ describe("账号管理", () => {
     );
     expect(await screen.findByText("重新扫码登录 10001")).toBeInTheDocument();
     expect(
-      screen.getByText("请用闲鱼号 10001 扫码；扫其他账号不会覆盖该账号登录。")
+      screen.getByText("请用闲鱼号 10001 扫码；扫其他账号会被拒绝，不会新增账号或覆盖登录。")
     ).toBeInTheDocument();
+  });
+
+  it("重新扫码扫到其他账号时提示用同一账号，且不新增账号", async () => {
+    vi.mocked(api.post).mockResolvedValue({
+      session_id: "s3",
+      qr: "data:image/png;base64,CCC",
+      state: "waiting",
+    });
+    vi.mocked(api.get).mockImplementation((path: string) => {
+      if (path === "/api/accounts") {
+        return Promise.resolve(accounts);
+      }
+      if (path === "/api/accounts/qr/s3") {
+        return Promise.resolve({
+          state: "error",
+          message:
+            "扫码的是闲鱼号 20002，不是要重新登录的 10001；请用同一账号扫码，本次未新增或修改账号",
+        });
+      }
+      return Promise.reject(new Error(`unexpected GET ${path}`));
+    });
+
+    render(<AccountsPage />);
+    await screen.findByText("主号");
+
+    await userEvent.click(screen.getAllByRole("button", { name: /重新扫码/ })[0]);
+
+    expect(
+      await screen.findByText(/请用同一账号扫码/, undefined, { timeout: 4000 })
+    ).toBeInTheDocument();
+    expect(screen.getByText("登录未完成")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /重新获取二维码/ })).toBeInTheDocument();
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(api.post).toHaveBeenCalledWith("/api/accounts/qr", { account_id: 1 });
   });
 });
