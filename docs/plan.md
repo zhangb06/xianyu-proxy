@@ -346,6 +346,7 @@ available → claimed（订单占用） → used（发送成功）
 ## 11. 部署形态
 
 - Linux：单 systemd 服务，专用用户，数据目录 `/var/lib/xianyu-lite`
+- 子路径部署（如 `/xy/`）必须用 `VITE_BASE=/xy/ npm run build` 构建，否则资源会请求到站点根路径而 404
   - `NoNewPrivileges=true`、`PrivateTmp=true`、`ProtectSystem=strict`
   - 环境文件权限 0600，`Restart=on-failure`
 - Windows：`pystray` 托盘进程内启动 HTTP 服务
