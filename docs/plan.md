@@ -453,3 +453,30 @@ available → claimed（订单占用） → used（发送成功）
 - 修正：滚动 24 小时改为北京时间自然日；`v=2.0` 与 URL `1.0` 分离；worker 对 `flower` 任务独立分流，失败不污染订单/卡密状态；离线走重试而非跳过。
 - 风险与对策：擦亮接口风控未知 → 默认关闭、每天一次、间隔节流、错误退避；小红花打扰买家 → 默认关闭、延迟 30 分钟、每单一次、执行时复查黑名单/暂停。
 - 结论：方案可实施；真机验收依赖重新扫码（当前服务器账号 IM Token 失效）。
+
+
+## 19. 订单同步（手动补录，2026-11-11）
+
+### 19.1 目标与边界
+
+- 解决「系统宕机期间未收到付款通知，导致订单完全不可见」的缺口：用户在自动发货页点击「同步闲鱼订单」，按页拉取卖家已售订单并补录。
+- 只做只读拉取 + 本地补录，不改动闲鱼订单状态；不绕过闲鱼权限与风控。
+
+### 19.2 协议事实
+
+- 接口：`mtop.taobao.idle.trade.merchant.sold.get` 1.0，`data` 为 `{pageNumber, rowsPerPage, orderIds:"", queryCode:"ALL", orderSearchParam:"{}"}`。
+- 需要卖家站来源头：`Origin/Referer: https://seller.goofish.com`；`mtop_call` 增加可选的 `origin`/`referer` 参数。
+- 返回 `data.module.items/nextPage/totalCount`；单条取 `commonData.orderId/orderStatus/itemId/createTime`、`buyerInfoVO.buyerId`、`priceVO.totalPrice`；不返回会话 ID。
+
+### 19.3 同步策略
+
+- 增量：`account.orders_synced_at` 记录上次同步到的最新下单时间；下次同步只处理该时间之后（重叠 5 分钟防漏），首次最多拉 10 页（30 条/页）。
+- 状态映射：待发货 → 本地待发货；已发货/交易成功 → 本地已发货（只记录不重发）；待付款/交易关闭/退款 → 跳过不建单。
+- 已存在订单号不重复建单；已发货状态不被覆盖，只补 absent 数据。
+- 能否自动发：按买家在本地 `chat.peer_id` 找会话；找到且付款不超过 10 分钟则入队补发，否则转「需人工」；无会话一律「需人工」。
+- 每账号一把同步锁；Cookie 有更新时写回；token 过期错误直接返回提示，不静默成功。
+
+### 19.4 接口与界面
+
+- `POST /api/accounts/{id}/orders/sync` → `{fetched, inserted, queued, manual, delivered, skipped, last_synced_at}`；账号不存在 404，拉取失败 502。
+- `GET /api/accounts/{id}/orders` 增加 `last_synced_at`；订单页工具栏增加「同步闲鱼订单」按钮并显示上次同步时间。

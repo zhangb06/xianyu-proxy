@@ -214,4 +214,46 @@ describe("自动发货 - 卡密池", () => {
       template: "{secret}",
     });
   });
+
+  it("点击同步闲鱼订单提交同步并刷新上次同步时间", async () => {
+    vi.mocked(api.post).mockResolvedValue({
+      fetched: 3,
+      inserted: 2,
+      queued: 1,
+      manual: 1,
+      delivered: 0,
+      skipped: 0,
+      last_synced_at: "2026-11-11T02:00:00Z",
+    });
+    vi.mocked(api.get).mockImplementation((path: string) => {
+      if (path === "/api/accounts") {
+        return Promise.resolve([{ id: 1, remark: "主号", xianyu_id: "10001" }]);
+      }
+      if (path.startsWith("/api/accounts/1/orders")) {
+        return Promise.resolve({ orders: [], last_synced_at: "2026-11-11T02:00:00Z" });
+      }
+      if (path === "/api/accounts/1/outbox") {
+        return Promise.resolve({ tasks: [] });
+      }
+      if (path === "/api/accounts/1/cards") {
+        return Promise.resolve({ cards: [] });
+      }
+      if (path === "/api/accounts/1/delivery-rules") {
+        return Promise.resolve({ rules: [] });
+      }
+      return Promise.reject(new Error(`unexpected GET ${path}`));
+    });
+
+    render(<DeliveryPage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /同步闲鱼订单/ }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/api/accounts/1/orders/sync")
+    );
+    expect(
+      await screen.findByText(/同步完成：拉取 3，新增 2，补发 1，需人工 1/)
+    ).toBeInTheDocument();
+    expect(await screen.findByText(/上次同步/)).toBeInTheDocument();
+  });
 });

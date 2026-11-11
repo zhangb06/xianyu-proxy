@@ -82,11 +82,15 @@ def generate_sign(t: str, token: str, data: str, app_key: str = APP_KEY) -> str:
     return hashlib.md5(f"{token}&{t}&{app_key}&{data}".encode()).hexdigest()
 
 
-def _headers(jar: CookieJar, referer: str = "https://www.goofish.com/") -> dict[str, str]:
+def _headers(
+    jar: CookieJar,
+    referer: str = "https://www.goofish.com/",
+    origin: str = "https://www.goofish.com",
+) -> dict[str, str]:
     return {
         "Accept": "application/json",
         "Content-Type": "application/x-www-form-urlencoded",
-        "Origin": "https://www.goofish.com",
+        "Origin": origin,
         "Referer": referer,
         "User-Agent": USER_AGENT,
         "Cookie": jar.header(),
@@ -107,6 +111,8 @@ async def mtop_call(
     method: str = "POST",
     timeout: float = 30.0,
     proxy: str = "",
+    referer: str = "https://www.goofish.com/",
+    origin: str = "https://www.goofish.com",
 ) -> dict[str, Any]:
     """调用 mtop 接口，令牌过期时重签一次。"""
     url = f"{H5_BASE}/{api}/{version}/"
@@ -138,11 +144,11 @@ async def mtop_call(
             ) as client:
                 if method.upper() == "GET":
                     response = await client.get(
-                        url, params={**params, "data": payload}, headers=_headers(jar)
+                        url, params={**params, "data": payload}, headers=_headers(jar, referer, origin)
                     )
                 else:
                     response = await client.post(
-                        url, params=params, data={"data": payload}, headers=_headers(jar)
+                        url, params=params, data={"data": payload}, headers=_headers(jar, referer, origin)
                     )
         except httpx.HTTPError as exc:
             last_error = f"请求异常: {exc}"

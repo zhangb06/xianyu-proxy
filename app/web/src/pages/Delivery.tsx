@@ -19,7 +19,7 @@ import {
   Upload,
   message,
 } from "antd";
-import { PlusOutlined, ReloadOutlined, UploadOutlined } from "@ant-design/icons";
+import { PlusOutlined, ReloadOutlined, SyncOutlined, UploadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "../api";
 import TemplateEditor from "../components/TemplateEditor";
@@ -63,6 +63,8 @@ export default function DeliveryPage() {
   const [orderStatus, setOrderStatus] = useState<string>("");
   const [outbox, setOutbox] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState("");
+  const [syncing, setSyncing] = useState(false);
 
   const [cards, setCards] = useState<any[]>([]);
   const [rules, setRules] = useState<any[]>([]);
@@ -102,11 +104,28 @@ export default function DeliveryPage() {
     ])
       .then(([orderRows, tasks]: any[]) => {
         setOrders(orderRows.orders);
+        setLastSyncedAt(orderRows.last_synced_at || "");
         setOutbox(tasks.tasks);
       })
       .catch((error) => message.error(String(error)))
       .finally(() => setLoadingOrders(false));
   }, [accountId, orderStatus]);
+
+  const syncOrders = async () => {
+    if (accountId === null) return;
+    setSyncing(true);
+    try {
+      const result: any = await api.post(`/api/accounts/${accountId}/orders/sync`);
+      message.success(
+        `同步完成：拉取 ${result.fetched}，新增 ${result.inserted}，补发 ${result.queued}，需人工 ${result.manual}`
+      );
+      loadOrders();
+    } catch (error) {
+      message.error(String(error));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const loadCards = useCallback(() => {
     if (accountId === null) return;
@@ -241,6 +260,12 @@ export default function DeliveryPage() {
         <Button icon={<ReloadOutlined />} onClick={loadOrders} loading={loadingOrders}>
           刷新
         </Button>
+        <Button icon={<SyncOutlined />} onClick={syncOrders} loading={syncing}>
+          同步闲鱼订单
+        </Button>
+        <Typography.Text type="secondary">
+          {lastSyncedAt ? `上次同步 ${dayjs(lastSyncedAt).format("MM-DD HH:mm")}` : "尚未同步过"}
+        </Typography.Text>
       </Space>
       <Table
         rowKey="id"

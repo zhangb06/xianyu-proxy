@@ -12,6 +12,7 @@ from app.core.passwords import verify_password
 from app.db.repo.chats import ChatRepo
 from app.db.repo.events import log_event
 from app.db.repo.items import ItemRepo
+from app.delivery.order_sync import OrderSyncError, OrderSyncResult
 from app.main import create_app
 from app.pipeline.engine import SendResult
 from app.protocol.items import ItemInfo
@@ -833,3 +834,59 @@ def test_polish_item_api_guards_login_and_reports_failure(
     stored = _call(client, repo.get, account_id, "3000")
     assert stored is not None and stored.polished_at == ""
     assert "系统繁忙" in stored.polish_error
+
+
+class _FakeOrderSync:
+    def __init__(
+        self, result: OrderSyncResult | None = None, *, error: OrderSyncError | None = None
+    ) -> None:
+        self.result = result or OrderSyncResult(
+            account_id=1,
+            fetched=3,
+            inserted=2,
+            queued=1,
+            manual=1,
+            delivered=0,
+            skipped=0,
+            last_synced_at="2026-11-11T02:00:00Z",
+        )
+        self.error = error
+        self.calls: list[int] = []
+
+    async def sync(self, account_id: int, **_: Any) -> OrderSyncResult:
+        self.calls.append(account_id)
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+
+def test_orders_sync_api(client: TestClient, authed: tuple[TestClient, str]) -> None:
+    client, csrf = authed
+    headers = {"X-CSRF-Token": csrf}
+    account_id = _make_account(client)
+    fake = _FakeOrderSync()
+    client.app.state.supervisor.order_sync = fake
+
+    response = client.post(f"/api/accounts/{account_id}/orders/sync", headers=headers)
+
+    assert response.status_code == 200
+    assert fake.calls == [account_id]
+    assert response.json()["inserted"] == 2
+    assert response.json()["last_synced_at"] == "2026-11-11T02:00:00Z"
+
+    _call(
+        client,
+        client.app.state.supervisor.accounts.set_orders_synced_at,
+        account_id,
+        "2026-11-11T02:00:00Z",
+    )
+    listed = client.get(f"/api/accounts/{account_id}/orders")
+    assert listed.status_code == 200
+    assert listed.json()["last_synced_at"] == "2026-11-11T02:00:00Z"
+
+    assert client.post("/api/accounts/999/orders/sync", headers=headers).status_code == 404
+
+    client.app.state.supervisor.order_sync = _FakeOrderSync(error=OrderSyncError("登录已失效"))
+    failed = client.post(f"/api/accounts/{account_id}/orders/sync", headers=headers)
+    assert failed.status_code == 502
+    assert "登录已失效" in failed.json()["detail"]

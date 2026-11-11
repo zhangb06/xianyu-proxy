@@ -16,6 +16,7 @@ from app.db.repo.delivery import (
 )
 from app.db.repo.items import ItemDeliveryRepo, ItemRepo
 from app.delivery.catalog import CatalogError
+from app.delivery.order_sync import OrderSyncError
 from app.delivery.polish import PolishError
 from app.protocol.listing import STATUS_ON_SALE
 
@@ -273,13 +274,37 @@ async def list_orders(
     limit: int = 200,
     _session=Depends(require_admin),
 ) -> dict[str, object]:
-    await _account_or_404(request, account_id)
+    account = await _account_or_404(request, account_id)
     if status and status not in ORDER_STATUSES:
         raise HTTPException(status_code=400, detail="未知订单状态")
     orders = await OrderRepo(request.app.state.db).list(
         account_id, status=status, limit=max(1, min(limit, 500))
     )
-    return {"orders": [_order_payload(order) for order in orders]}
+    return {
+        "orders": [_order_payload(order) for order in orders],
+        "last_synced_at": account.orders_synced_at,
+    }
+
+
+@router.post("/accounts/{account_id}/orders/sync")
+async def sync_orders(
+    account_id: int, request: Request, _session=Depends(require_write)
+) -> dict[str, object]:
+    await _account_or_404(request, account_id)
+    try:
+        result = await request.app.state.supervisor.order_sync.sync(account_id)
+    except OrderSyncError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "account_id": result.account_id,
+        "fetched": result.fetched,
+        "inserted": result.inserted,
+        "queued": result.queued,
+        "manual": result.manual,
+        "delivered": result.delivered,
+        "skipped": result.skipped,
+        "last_synced_at": result.last_synced_at,
+    }
 
 
 @router.post("/orders/{order_id}/redeliver")

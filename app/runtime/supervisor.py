@@ -13,6 +13,7 @@ from app.db.engine import Database
 from app.db.repo.accounts import Account, AccountRepo
 from app.db.repo.ops import AccountOpsRepo
 from app.delivery.catalog import CatalogError, ItemCatalogService
+from app.delivery.order_sync import OrderSyncService
 from app.delivery.polish import AUTO_POLISH_INTERVAL_SECONDS, PolishService
 from app.delivery.service import DeliveryService
 from app.delivery.worker import DeliveryWorker
@@ -32,6 +33,7 @@ class Supervisor:
         self.deliveries = DeliveryService(db, self.accounts, self.items)
         self.ops = AccountOpsRepo(db)
         self.polish = PolishService(db, self.accounts)
+        self.order_sync = OrderSyncService(db, self.accounts)
         self.pipeline = ReplyPipeline(db, self.ai, self.deliveries)
         self.connect_semaphore = asyncio.Semaphore(max(1, settings.account_concurrency))
         self.actors: dict[int, AccountActor] = {}

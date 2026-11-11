@@ -21,6 +21,7 @@ class Account:
     proxy_url: str
     verification_mode: str
     last_error: str
+    orders_synced_at: str = ""
 
     @classmethod
     def from_row(cls, row: Any) -> Account:
@@ -34,6 +35,7 @@ class Account:
             proxy_url=str(row["proxy_url"]),
             verification_mode=str(row["verification_mode"]),
             last_error=str(row["last_error"]),
+            orders_synced_at=str(row["orders_synced_at"]),
         )
 
 
@@ -119,6 +121,12 @@ class AccountRepo:
 
     async def delete(self, account_id: int) -> None:
         await self.db.write("DELETE FROM account WHERE id = ?", (account_id,))
+
+    async def set_orders_synced_at(self, account_id: int, value: str) -> None:
+        await self.db.write(
+            "UPDATE account SET orders_synced_at = ?, updated_at = ? WHERE id = ?",
+            (value, utc_now_iso(), account_id),
+        )
 
     async def save_cookie(self, account_id: int, cookies: dict[str, str]) -> None:
         plaintext = json.dumps(cookies, ensure_ascii=False, separators=(",", ":"))
