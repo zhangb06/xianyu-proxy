@@ -19,6 +19,7 @@ from app.delivery.service import DeliveryService
 from app.delivery.worker import DeliveryWorker
 from app.pipeline.engine import ReplyPipeline
 from app.runtime.account_actor import AccountActor, ActorDeps
+from app.runtime.profile import NICKNAME_INTERVAL_SECONDS, fill_account_nickname
 
 
 class Supervisor:
@@ -26,6 +27,7 @@ class Supervisor:
 
     def __init__(self, db: Database, settings: Settings, secret: str) -> None:
         self.settings = settings
+        self.db = db
         self.accounts = AccountRepo(db, secret)
         self.items = ItemInfoService(self.accounts)
         self.catalog = ItemCatalogService(db, self.accounts)
@@ -41,6 +43,7 @@ class Supervisor:
         self._catalog_task: asyncio.Task[None] | None = None
         self._catalog_backoff: dict[int, float] = {}
         self._polish_task: asyncio.Task[None] | None = None
+        self._nickname_task: asyncio.Task[None] | None = None
         self._stopping = False
 
     async def start(self) -> None:
@@ -51,10 +54,11 @@ class Supervisor:
         if self.settings.catalog_sync_seconds > 0:
             self._catalog_task = asyncio.create_task(self._catalog_loop())
         self._polish_task = asyncio.create_task(self._polish_loop())
+        self._nickname_task = asyncio.create_task(self._nickname_loop())
 
     async def stop(self) -> None:
         self._stopping = True
-        for attr in ("_catalog_task", "_polish_task"):
+        for attr in ("_catalog_task", "_polish_task", "_nickname_task"):
             task = getattr(self, attr)
             setattr(self, attr, None)
             if task is not None:
@@ -82,6 +86,27 @@ class Supervisor:
                 except Exception:
                     logger.exception("商品自动同步失败")
                 await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            pass
+
+    async def _nickname_loop(self) -> None:
+        try:
+            await asyncio.sleep(20)
+            while not self._stopping:
+                try:
+                    for account in await self.accounts.list_all():
+                        if account.remark:
+                            continue
+                        nickname = await fill_account_nickname(
+                            self.db, self.accounts, account.id
+                        )
+                        if nickname:
+                            logger.info(f"账号 {account.id} 已自动读取昵称: {nickname}")
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception("自动读取账号昵称失败")
+                await asyncio.sleep(NICKNAME_INTERVAL_SECONDS)
         except asyncio.CancelledError:
             pass
 

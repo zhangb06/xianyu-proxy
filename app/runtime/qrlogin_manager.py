@@ -9,6 +9,7 @@ from loguru import logger
 from app.db.repo.accounts import AccountRepo
 from app.db.repo.events import log_event
 from app.protocol.qrlogin import QRLogin, QRLoginError, QRSession, data_url
+from app.runtime.profile import fill_account_nickname
 
 if TYPE_CHECKING:
     from app.runtime.supervisor import Supervisor
@@ -97,7 +98,13 @@ class QRLoginManager:
         account = await self.accounts.upsert(unb)
         await self.accounts.save_cookie(account.id, session.jar.as_dict())
         await self.accounts.set_status(account.id, "new")
-        await self._log(account.id, "login.success", "info", {"xianyu_id": unb})
+        nickname = await fill_account_nickname(self.accounts.db, self.accounts, account.id)
+        await self._log(
+            account.id,
+            "login.success",
+            "info",
+            {"xianyu_id": unb, "nickname": nickname},
+        )
         if self.supervisor is not None:
             await self.supervisor.reload()
         return {

@@ -7,6 +7,7 @@ import pytest
 from app.core.secrets import resolve_secret
 from app.db.engine import Database
 from app.db.repo.accounts import AccountRepo
+from app.db.repo.chats import ChatRepo
 from app.protocol.mtop import CookieJar
 from app.protocol.qrlogin import QRSession
 from app.runtime import qrlogin_manager as module
@@ -64,12 +65,20 @@ async def test_scan_without_target_creates_account(tmp_path: Path, fake_qr) -> N
         await db.close()
 
 
-async def test_rescan_same_account_reuses_row_and_refreshes_cookie(tmp_path: Path, fake_qr) -> None:
+async def test_rescan_same_account_reuses_row_and_refreshes_cookie(
+    tmp_path: Path, fake_qr, monkeypatch: pytest.MonkeyPatch
+) -> None:
     manager, accounts, db = await _manager(tmp_path, "10001")
     try:
         account = await accounts.upsert("10001", remark="主号")
         await accounts.save_cookie(account.id, {"cookie2": "old"})
         await accounts.set_status(account.id, "offline", last_error="令牌过期")
+
+        async def fake_nickname(jar, chat_id, *, proxy: str = "") -> str:
+            assert chat_id == "c1"
+            return "18号当铺"
+
+        monkeypatch.setattr("app.runtime.profile.fetch_own_nickname", fake_nickname)
 
         fake_qr("10001")
         started = await manager.start(account_id=account.id)
@@ -114,5 +123,27 @@ async def test_rescan_deleted_account_reports_error(tmp_path: Path, fake_qr) -> 
         result = await manager.status(started["session_id"])
         assert result == {"state": "error", "message": "要重新登录的账号已不存在"}
         assert await accounts.list_all() == []
+    finally:
+        await db.close()
+
+async def test_scan_fills_empty_remark_with_nickname(
+    tmp_path: Path, fake_qr, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager, accounts, db = await _manager(tmp_path, "10001")
+    try:
+        account = await accounts.upsert("10001")
+        await ChatRepo(db).ensure(account.id, "c1", peer_id="b1")
+
+        async def fake_nickname(jar, chat_id, *, proxy: str = "") -> str:
+            return "18号当铺"
+
+        monkeypatch.setattr("app.runtime.profile.fetch_own_nickname", fake_nickname)
+        fake_qr("10001")
+        started = await manager.start()
+        result = await manager.status(started["session_id"])
+
+        assert result["state"] == "success"
+        stored = await accounts.get(account.id)
+        assert stored is not None and stored.remark == "18号当铺"
     finally:
         await db.close()

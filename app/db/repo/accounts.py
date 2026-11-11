@@ -122,6 +122,14 @@ class AccountRepo:
     async def delete(self, account_id: int) -> None:
         await self.db.write("DELETE FROM account WHERE id = ?", (account_id,))
 
+    async def set_remark_if_empty(self, account_id: int, remark: str) -> None:
+        if not remark:
+            return
+        await self.db.write(
+            "UPDATE account SET remark = ?, updated_at = ? WHERE id = ? AND remark = ''",
+            (remark, utc_now_iso(), account_id),
+        )
+
     async def set_orders_synced_at(self, account_id: int, value: str) -> None:
         await self.db.write(
             "UPDATE account SET orders_synced_at = ?, updated_at = ? WHERE id = ?",
