@@ -118,6 +118,13 @@ class ChatRepo:
         )
         return Chat.from_row(row) if row else None
 
+    async def latest_chat_id(self, account_id: int) -> str:
+        row = await self.db.fetch_one(
+            "SELECT chat_id FROM chat WHERE account_id = ? ORDER BY last_message_at DESC LIMIT 1",
+            (account_id,),
+        )
+        return str(row["chat_id"]) if row is not None else ""
+
     async def list_by_account(self, account_id: int, *, limit: int = 200) -> list[Chat]:
         rows = await self.db.fetch_all(
             "SELECT * FROM chat WHERE account_id = ? ORDER BY last_message_at DESC LIMIT ?",

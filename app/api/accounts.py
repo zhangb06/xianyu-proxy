@@ -7,7 +7,10 @@ from pydantic import BaseModel
 
 from app.api.deps import require_admin, require_write
 from app.db.repo.accounts import Account
+from app.db.repo.chats import ChatRepo
 from app.db.repo.ops import AccountOps
+from app.protocol.mtop import CookieJar, MtopError
+from app.protocol.trade import fetch_own_nickname
 
 router = APIRouter(tags=["accounts"])
 
@@ -98,6 +101,29 @@ async def update_account_ops(
     )
     request.app.state.supervisor.polish.wake()
     return serialize_ops(ops)
+
+
+@router.post("/accounts/{account_id}/nickname")
+async def read_account_nickname(
+    account_id: int, request: Request, _session=Depends(require_write)
+) -> dict[str, str]:
+    repo = request.app.state.supervisor.accounts
+    account = await repo.get(account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    cookie = await repo.load_cookie(account_id)
+    if not cookie:
+        raise HTTPException(status_code=409, detail="账号尚未登录，请重新扫码")
+    chat_id = await ChatRepo(request.app.state.db).latest_chat_id(account_id)
+    if not chat_id:
+        raise HTTPException(status_code=409, detail="暂无会话，无法读取昵称")
+    try:
+        nickname = await fetch_own_nickname(
+            CookieJar(dict(cookie)), chat_id, proxy=account.proxy_url
+        )
+    except MtopError as exc:
+        raise HTTPException(status_code=502, detail=f"读取昵称失败: {exc}") from exc
+    return {"nickname": nickname}
 
 
 @router.post("/accounts/{account_id}/enable")

@@ -21,6 +21,7 @@ import { ReloadOutlined, SettingOutlined, SyncOutlined } from "@ant-design/icons
 import dayjs from "dayjs";
 import { api } from "../api";
 import TemplateEditor from "../components/TemplateEditor";
+import { accountLabel, pickAccountId, rememberAccountId } from "../lib/account";
 import { FIXED_TEMPLATE_VARIABLES, sampleValues, TEMPLATE_VARIABLES } from "../lib/template";
 
 const MODE_META: Record<string, { label: string; color: string }> = {
@@ -54,7 +55,7 @@ export default function ItemsPage() {
       .get("/api/accounts")
       .then((rows: any[]) => {
         setAccounts(rows);
-        setAccountId((prev) => prev ?? rows[0]?.id ?? null);
+        setAccountId((prev) => pickAccountId(rows, prev));
       })
       .catch((error) => message.error(String(error)));
   }, []);
@@ -189,10 +190,13 @@ export default function ItemsPage() {
           style={{ width: 200 }}
           placeholder="选择账号"
           value={accountId}
-          onChange={(value) => setAccountId(value)}
+          onChange={(value) => {
+            setAccountId(value);
+            rememberAccountId(value);
+          }}
           options={accounts.map((account) => ({
             value: account.id,
-            label: account.remark || account.xianyu_id,
+            label: accountLabel(account),
           }))}
         />
       }

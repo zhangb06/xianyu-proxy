@@ -480,3 +480,8 @@ available → claimed（订单占用） → used（发送成功）
 
 - `POST /api/accounts/{id}/orders/sync` → `{fetched, inserted, queued, manual, delivered, skipped, last_synced_at}`；账号不存在 404，拉取失败 502。
 - `GET /api/accounts/{id}/orders` 增加 `last_synced_at`；订单页工具栏增加「同步闲鱼订单」按钮并显示上次同步时间。
+
+### 19.5 账号显示与昵称
+
+- 账号选择器统一显示「备注（闲鱼ID）」；无备注显示「闲鱼号 ID」；各页面记住上次选择的账号（localStorage，账号删除后自动回退第一个）。
+- 「读取闲鱼昵称」：账号编辑弹窗内按钮，取任一已有会话调用 `mtop.taobao.idlemessage.pc.user.query` 4.0（`isOwner=true`）返回 `userInfo.fishNick`，填入备注；无会话或未登录时明确提示，不改动账号数据。

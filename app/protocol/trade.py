@@ -8,6 +8,7 @@ from app.protocol.mtop import CookieJar, MtopError, get_m_h5_tk, mtop_call
 
 CONSIGN_API = "mtop.taobao.idle.logistic.consign.dummy"
 SOLD_API = "mtop.taobao.idle.trade.merchant.sold.get"
+USER_QUERY_API = "mtop.taobao.idlemessage.pc.user.query"
 
 _BEIJING = timezone(timedelta(hours=8))
 
@@ -131,3 +132,23 @@ async def fetch_sold_orders_page(
         next_page=str(module.get("nextPage")).lower() == "true",
         total_count=int(module.get("totalCount") or 0),
     )
+
+async def fetch_own_nickname(jar: CookieJar, chat_id: str, *, proxy: str = "") -> str:
+    """经任意真实会话查询卖家自己的闲鱼昵称（isOwner）。"""
+    if not chat_id:
+        raise MtopError("暂无会话，无法读取昵称")
+    body = await mtop_call(
+        jar,
+        USER_QUERY_API,
+        "4.0",
+        {"type": 0, "sessionType": 1, "sessionId": chat_id, "isOwner": True},
+        proxy=proxy,
+    )
+    ret = " ".join(str(item) for item in (body.get("ret") or []))
+    if "SUCCESS::" not in ret:
+        raise MtopError(ret or "读取昵称失败")
+    info = (body.get("data") or {}).get("userInfo") or {}
+    nickname = str(info.get("fishNick") or "").strip()
+    if not nickname:
+        raise MtopError("接口未返回昵称")
+    return nickname

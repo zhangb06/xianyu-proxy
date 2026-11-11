@@ -22,6 +22,7 @@ import {
 import { PlusOutlined, ReloadOutlined, SyncOutlined, UploadOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "../api";
+import { accountLabel, pickAccountId, rememberAccountId } from "../lib/account";
 import TemplateEditor from "../components/TemplateEditor";
 import { sampleValues, TEMPLATE_VARIABLES } from "../lib/template";
 import { parseSecretFile } from "../lib/secretFile";
@@ -89,7 +90,7 @@ export default function DeliveryPage() {
       .get("/api/accounts")
       .then((rows: any[]) => {
         setAccounts(rows);
-        setAccountId((prev) => prev ?? rows[0]?.id ?? null);
+        setAccountId((prev) => pickAccountId(rows, prev));
       })
       .catch((error) => message.error(String(error)));
   }, []);
@@ -631,10 +632,13 @@ export default function DeliveryPage() {
           style={{ width: 200 }}
           placeholder="选择账号"
           value={accountId}
-          onChange={(value) => setAccountId(value)}
+          onChange={(value) => {
+            setAccountId(value);
+            rememberAccountId(value);
+          }}
           options={accounts.map((account) => ({
             value: account.id,
-            label: account.remark || account.xianyu_id,
+            label: accountLabel(account),
           }))}
         />
       }

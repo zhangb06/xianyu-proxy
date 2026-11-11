@@ -211,4 +211,26 @@ describe("账号管理", () => {
     expect(api.post).toHaveBeenCalledTimes(1);
     expect(api.post).toHaveBeenCalledWith("/api/accounts/qr", { account_id: 1 });
   });
+
+  it("编辑账号可读取闲鱼昵称并填入备注", async () => {
+    vi.mocked(api.get).mockImplementation((path: string) => {
+      if (path.endsWith("/ops")) {
+        return Promise.resolve({ account_id: 1, auto_polish: false, flower_enabled: false });
+      }
+      return Promise.resolve(accounts);
+    });
+    vi.mocked(api.post).mockResolvedValue({ nickname: "18号当铺" });
+
+    render(<AccountsPage />);
+    await screen.findByText("主号");
+
+    await userEvent.click(screen.getAllByRole("button", { name: /^编\s*辑$/ })[0]);
+    await screen.findByText("编辑账号 10001");
+    const remark = screen.getByDisplayValue("主号");
+
+    await userEvent.click(screen.getByRole("button", { name: /读取闲鱼昵称/ }));
+
+    await waitFor(() => expect(remark).toHaveValue("18号当铺"));
+    expect(api.post).toHaveBeenCalledWith("/api/accounts/1/nickname");
+  });
 });

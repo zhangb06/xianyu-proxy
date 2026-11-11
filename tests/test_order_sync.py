@@ -21,6 +21,7 @@ from app.protocol.trade import (
     SOLD_API,
     SoldOrder,
     SoldOrderPage,
+    fetch_own_nickname,
     fetch_sold_orders_page,
     parse_sold_order,
 )
@@ -273,3 +274,27 @@ async def test_fetch_sold_orders_page_reports_failure(monkeypatch: pytest.Monkey
     with pytest.raises(MtopError) as info:
         await fetch_sold_orders_page(CookieJar({}))
     assert "FAIL_SYS_SESSION_EXPIRED" in str(info.value)
+
+
+async def test_fetch_own_nickname_returns_fish_nick(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.protocol import trade
+
+    async def fake_call(jar, api, version, data, **kwargs):
+        assert api == trade.USER_QUERY_API and data["isOwner"] is True
+        assert data["sessionId"] == "c1"
+        return {"ret": ["SUCCESS::调用成功"], "data": {"userInfo": {"fishNick": "18号当铺"}}}
+
+    monkeypatch.setattr(trade, "mtop_call", fake_call)
+    assert await fetch_own_nickname(CookieJar({}), "c1") == "18号当铺"
+
+
+async def test_fetch_own_nickname_reports_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.protocol import trade
+
+    async def fake_call(jar, api, version, data, **kwargs):
+        return {"ret": ["FAIL_BIZ_BAD_REQUEST::||invalid params"]}
+
+    monkeypatch.setattr(trade, "mtop_call", fake_call)
+    with pytest.raises(MtopError) as info:
+        await fetch_own_nickname(CookieJar({}), "c1")
+    assert "FAIL_BIZ_BAD_REQUEST" in str(info.value)

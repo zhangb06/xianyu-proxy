@@ -115,6 +115,7 @@ describe("商品管理 - 卡密池与默认关闭", () => {
     await waitFor(() => expect(api.get).toHaveBeenCalledWith("/api/accounts/1/items"));
     expect(await screen.findByText("电子书")).toBeInTheDocument();
     expect(screen.getByText("电子书池 · 可用 3")).toBeInTheDocument();
+    expect(screen.getByText("主号（10001）")).toBeInTheDocument();
   });
 
   it("未配置商品打开配置时默认关闭自动发货", async () => {

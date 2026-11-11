@@ -890,3 +890,31 @@ def test_orders_sync_api(client: TestClient, authed: tuple[TestClient, str]) -> 
     failed = client.post(f"/api/accounts/{account_id}/orders/sync", headers=headers)
     assert failed.status_code == 502
     assert "登录已失效" in failed.json()["detail"]
+
+
+def test_account_nickname_api(
+    client: TestClient, authed: tuple[TestClient, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, csrf = authed
+    headers = {"X-CSRF-Token": csrf}
+    account_id = _make_account(client)
+
+    assert client.post(f"/api/accounts/{account_id}/nickname", headers=headers).status_code == 409
+
+    _call(client, client.app.state.supervisor.accounts.save_cookie, account_id, {"unb": "10001"})
+    assert client.post(f"/api/accounts/{account_id}/nickname", headers=headers).status_code == 409
+
+    _call(client, ChatRepo(client.app.state.db).ensure, account_id, "c1", peer_id="b1")
+
+    import app.api.accounts as accounts_api
+
+    async def fake_fetch(jar, chat_id, *, proxy: str = "") -> str:
+        assert chat_id == "c1"
+        return "18号当铺"
+
+    monkeypatch.setattr(accounts_api, "fetch_own_nickname", fake_fetch)
+    response = client.post(f"/api/accounts/{account_id}/nickname", headers=headers)
+    assert response.status_code == 200
+    assert response.json() == {"nickname": "18号当铺"}
+
+    assert client.post("/api/accounts/999/nickname", headers=headers).status_code == 404

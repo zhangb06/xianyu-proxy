@@ -17,6 +17,7 @@ import {
 } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import { api } from "../api";
+import { accountLabel, pickAccountId, rememberAccountId } from "../lib/account";
 
 const BLOCK_KINDS = [
   { value: "user", label: "用户" },
@@ -69,7 +70,7 @@ export default function RulesPage() {
       .get("/api/accounts")
       .then((rows: any[]) => {
         setAccounts(rows);
-        setAccountId((prev) => prev ?? rows[0]?.id ?? null);
+        setAccountId((prev) => pickAccountId(rows, prev));
       })
       .catch((error) => message.error(String(error)));
   }, []);
@@ -199,8 +200,11 @@ export default function RulesPage() {
         <Select
           style={{ width: 220 }}
           value={accountId}
-          onChange={setAccountId}
-          options={accounts.map((a) => ({ value: a.id, label: a.remark || a.xianyu_id }))}
+          onChange={(value) => {
+            setAccountId(value);
+            rememberAccountId(value);
+          }}
+          options={accounts.map((a) => ({ value: a.id, label: accountLabel(a) }))}
         />
       }
     >

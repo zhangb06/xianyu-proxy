@@ -17,6 +17,7 @@ import {
 import { SendOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "../api";
+import { accountLabel } from "../lib/account";
 
 export default function ChatsPage() {
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -112,7 +113,7 @@ export default function ChatsPage() {
           style={{ width: 200 }}
           value={accountFilter}
           onChange={(v) => setAccountFilter(v ?? null)}
-          options={accounts.map((a) => ({ value: a.id, label: a.remark || a.xianyu_id }))}
+          options={accounts.map((a) => ({ value: a.id, label: accountLabel(a) }))}
         />
       }
     >

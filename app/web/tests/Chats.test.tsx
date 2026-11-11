@@ -130,9 +130,9 @@ describe("会话", () => {
     await screen.findByText("买家");
 
     await userEvent.click(screen.getByRole("combobox"));
-    await screen.findByText("主号", { selector: ".ant-select-item-option-content" });
+    await screen.findByText("主号（10001）", { selector: ".ant-select-item-option-content" });
     await userEvent.click(
-      document.querySelector('.ant-select-item-option[title="主号"]') as HTMLElement
+      document.querySelector('.ant-select-item-option[title="主号（10001）"]') as HTMLElement
     );
 
     await waitFor(() =>

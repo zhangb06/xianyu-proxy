@@ -148,6 +148,7 @@ export default function AccountsPage() {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [qrOpen, setQrOpen] = useState(false);
   const [qrTarget, setQrTarget] = useState<any | null>(null);
+  const [loadingNick, setLoadingNick] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form] = Form.useForm();
 
@@ -195,6 +196,20 @@ export default function AccountsPage() {
     }
   };
 
+  const loadNickname = async () => {
+    if (!editing) return;
+    setLoadingNick(true);
+    try {
+      const result: any = await api.post(`/api/accounts/${editing.id}/nickname`);
+      form.setFieldsValue({ remark: result.nickname });
+      message.success(`已读取闲鱼昵称：${result.nickname}`);
+    } catch (error) {
+      message.warning(String(error));
+    } finally {
+      setLoadingNick(false);
+    }
+  };
+
   const saveEdit = async (values: any) => {
     try {
       const { auto_polish, flower_enabled, ...account } = values;
@@ -230,7 +245,7 @@ export default function AccountsPage() {
         pagination={false}
         columns={[
           { title: "ID", dataIndex: "id", width: 64 },
-          { title: "备注", dataIndex: "remark", render: (v: string) => v || "-" },
+          { title: "备注", dataIndex: "remark", render: (v: string) => v || "未命名（编辑可设置）" },
           { title: "闲鱼 ID", dataIndex: "xianyu_id" },
           {
             title: "状态",
@@ -298,7 +313,15 @@ export default function AccountsPage() {
       >
         <Form form={form} layout="vertical" onFinish={saveEdit} preserve={false}>
           <Form.Item name="remark" label="备注">
-            <Input maxLength={64} />
+            <Input
+              maxLength={64}
+              placeholder="便于识别的名称，如：主号 / 18号当铺"
+              addonAfter={
+                <Button type="link" size="small" loading={loadingNick} onClick={loadNickname}>
+                  读取闲鱼昵称
+                </Button>
+              }
+            />
           </Form.Item>
           <Form.Item name="proxy_url" label="代理地址" rules={[{ type: "url", message: "格式如 http://127.0.0.1:7890" }]}>
             <Input placeholder="http://127.0.0.1:7890，留空为直连" />
