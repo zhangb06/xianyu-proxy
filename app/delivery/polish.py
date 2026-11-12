@@ -20,7 +20,7 @@ from app.protocol.mtop import CookieJar, MtopError
 from app.protocol.polish import PolishResult, polish_item
 
 AUTO_POLISH_INTERVAL_SECONDS = 60.0
-AUTO_POLISH_WINDOW = (9, 22)
+AUTO_POLISH_WINDOW = (9, 12)
 POLISH_SPACING_RANGE = (2.0, 6.0)
 AUTH_BACKOFF_SECONDS = 1800.0
 IDLE_RECHECK_SECONDS = 3600.0
@@ -198,7 +198,7 @@ class PolishService:
             )
 
     async def run_auto(self, *, now: datetime | None = None) -> PolishRunResult:
-        """每个开启自动擦亮的账号，每天在 09:00-22:00 的随机时刻擦一轮。"""
+        """每个开启自动擦亮的账号，每天在上午窗口内的随机时刻擦一轮。"""
         summary = PolishRunResult()
         account_ids = await self.ops.auto_polish_account_ids()
         if not account_ids:
