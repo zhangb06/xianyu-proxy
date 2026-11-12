@@ -228,6 +228,26 @@ async def test_polish_auth_error_is_flagged(tmp_path: Path) -> None:
         await db.close()
 
 
+async def test_polish_session_expired_response_is_treated_as_auth(tmp_path: Path) -> None:
+    db, account, accounts = await _setup(tmp_path)
+    try:
+        await _polishable_item(db, account.id)
+        stub = StubPolisher(
+            result=PolishResult(ok=False, message="FAIL_SYS_SESSION_EXPIRED::Session过期")
+        )
+        service = PolishService(db, accounts, polisher=stub)
+
+        with pytest.raises(PolishError) as info:
+            await service.polish(account, "42")
+
+        assert info.value.auth is True
+        item = await ItemRepo(db).get(account.id, "42")
+        assert item is not None and "FAIL_SYS_SESSION_EXPIRED" in item.polish_error
+        assert item.polished_at == ""
+    finally:
+        await db.close()
+
+
 async def test_polish_uses_shared_per_account_lock(tmp_path: Path) -> None:
     db, account, accounts = await _setup(tmp_path)
     try:

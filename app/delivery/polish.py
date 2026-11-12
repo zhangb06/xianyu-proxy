@@ -193,6 +193,8 @@ class PolishService:
             await self.repo.set_polish(
                 account.id, item_id, polished_at=item.polished_at, error=result.message
             )
+            if is_auth_error(result.message):
+                raise PolishError(result.message, auth=True)
             return PolishOutcome(
                 item_id=item_id, ok=False, offline=result.offline, message=result.message
             )
