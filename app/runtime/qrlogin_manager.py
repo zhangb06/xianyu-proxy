@@ -106,6 +106,7 @@ class QRLoginManager:
             {"xianyu_id": unb, "nickname": nickname},
         )
         if self.supervisor is not None:
+            self.supervisor.polish.reset_backoff(account.id)
             await self.supervisor.reload()
         return {
             "state": "success",

@@ -371,6 +371,28 @@ async def test_next_check_is_hourly_without_enabled_auto_polish(tmp_path: Path) 
         await db.close()
 
 
+async def test_reset_backoff_allows_retry_after_relogin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("app.delivery.polish.POLISH_SPACING_RANGE", (0.0, 0.0))
+    db, account, accounts = await _setup(tmp_path)
+    try:
+        await _polishable_item(db, account.id, "1")
+        await AccountOpsRepo(db).set(account.id, auto_polish=True)
+        stub = StubPolisher(error=MtopError("FAIL_SYS_TOKEN_EXPIRED::令牌过期"))
+        service = PolishService(db, accounts, polisher=stub)
+        target = auto_polish_target(account.id, beijing_today()) + timedelta(seconds=1)
+
+        await service.run_auto(now=target)
+        assert len(stub.calls) == 1
+
+        service.reset_backoff(account.id)
+        await service.run_auto(now=target)
+        assert len(stub.calls) == 2
+    finally:
+        await db.close()
+
+
 async def _deliver_fixed(db: Database, account: Account, service: DeliveryService, order_no: str) -> Any:
     await ItemRepo(db).ensure(account.id, "42", title="电子书", status="在售")
     await ItemDeliveryRepo(db).upsert(

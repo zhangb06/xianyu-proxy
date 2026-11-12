@@ -100,6 +100,11 @@ class PolishService:
         """账号开关/配置变化时唤醒循环，立即重新计算下次检查时间。"""
         self._wake.set()
 
+    def reset_backoff(self, account_id: int) -> None:
+        """重新登录成功后清除退避，允许当天立即补擦。"""
+        self._backoff.pop(account_id, None)
+        self._wake.set()
+
     async def wait_for_wake(self, timeout: float) -> None:
         self._wake.clear()
         try:
