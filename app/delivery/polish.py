@@ -204,6 +204,40 @@ class PolishService:
                 item_id=item_id, ok=False, offline=result.offline, message=result.message
             )
 
+    async def polish_all(self, account_id: int) -> PolishRunResult:
+        """一键擦亮：按顺序擦完该账号当天未擦的在售商品，已擦的跳过。"""
+        account = await self.accounts.get(account_id)
+        if account is None:
+            raise PolishError("账号不存在")
+        if not await self.accounts.load_cookie(account_id):
+            raise PolishError("账号尚未登录（缺少 Cookie）")
+        today = beijing_today()
+        items = await self.repo.list(account_id, status=STATUS_ON_SALE, limit=AUTO_POLISH_LIMIT)
+        pending = [item for item in items if not self._polished_today(item, today)]
+        summary = PolishRunResult(accounts=1 if pending else 0, already=len(items) - len(pending))
+        rng = random.Random()
+        for index, item in enumerate(pending):
+            if index:
+                low, high = POLISH_SPACING_RANGE
+                await asyncio.sleep(rng.uniform(low, high))
+            try:
+                outcome = await self.polish(account, item.item_id)
+            except PolishError as exc:
+                if exc.auth:
+                    self._backoff[account_id] = time.monotonic() + AUTH_BACKOFF_SECONDS
+                    raise
+                summary.failed += 1
+                logger.warning(f"账号 {account_id} 商品 {item.item_id} 擦亮失败: {exc}")
+                continue
+            if not outcome.ok:
+                summary.failed += 1
+                logger.warning(f"账号 {account_id} 商品 {item.item_id} 擦亮失败: {outcome.message}")
+            elif outcome.already:
+                summary.already += 1
+            else:
+                summary.polished += 1
+        return summary
+
     async def run_auto(self, *, now: datetime | None = None) -> PolishRunResult:
         """每个开启自动擦亮的账号，每天在上午窗口内的随机时刻擦一轮。"""
         summary = PolishRunResult()

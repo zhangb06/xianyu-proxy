@@ -17,7 +17,7 @@ import {
   Typography,
   message,
 } from "antd";
-import { ReloadOutlined, SettingOutlined, SyncOutlined } from "@ant-design/icons";
+import { ReloadOutlined, SettingOutlined, SyncOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "../api";
 import TemplateEditor from "../components/TemplateEditor";
@@ -46,6 +46,7 @@ export default function ItemsPage() {
   const [active, setActive] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [polishing, setPolishing] = useState("");
+  const [polishingAll, setPolishingAll] = useState(false);
   const [form] = Form.useForm();
   const mode = Form.useWatch("mode", form);
   const delivery = active?.delivery;
@@ -93,6 +94,22 @@ export default function ItemsPage() {
     loadItems();
     loadCards();
   }, [loadItems, loadCards]);
+
+  const polishAll = async () => {
+    if (accountId === null) return;
+    setPolishingAll(true);
+    try {
+      const result: any = await api.post(`/api/accounts/${accountId}/items/polish-all`);
+      message.success(
+        `一键擦亮完成：成功 ${result.polished}，已擦 ${result.already}，失败 ${result.failed}`
+      );
+      loadItems();
+    } catch (error) {
+      message.error(String(error));
+    } finally {
+      setPolishingAll(false);
+    }
+  };
 
   const syncItems = async () => {
     if (accountId === null) return;
@@ -216,6 +233,9 @@ export default function ItemsPage() {
             </Button>
             <Button icon={<ReloadOutlined />} onClick={loadItems} loading={loading}>
               刷新
+            </Button>
+            <Button icon={<ThunderboltOutlined />} onClick={polishAll} loading={polishingAll}>
+              一键擦亮
             </Button>
             <Input.Search
               allowClear

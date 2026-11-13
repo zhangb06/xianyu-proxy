@@ -440,6 +440,7 @@ available → claimed（订单占用） → used（发送成功）
 - `orders` 增列：`flower_status`（空/pending/sent/skipped/failed）、`flower_at`、`flower_error`；outbox 新任务类型 `flower`，去重键 `flower:{account_id}:{order_no}`；订单 payload 携带三列。
 - 常量而非新增配置项：循环间隔 60 秒、随机时间窗 09:00–12:00、同账号商品间隔 2–6 秒随机、小红花延迟 1800 秒、重试沿用 outbox 现有上限。
 - 手动擦亮只要求账号有 Cookie（HTTP 接口独立于 WS 在线状态）；自动化循环只处理启用且有 Cookie 的账号。
+- 一键擦亮：协议层没有批量接口（App 的「一键擦亮」是客户端逐个商品调用同一接口），商品页按钮由服务端按顺序擦完当天未擦的在售商品，已擦跳过、间隔 2–6 秒随机；失败与登录失效处理同逐个擦亮。
 
 ### 18.5 验收与协议前置条件
 

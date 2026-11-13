@@ -13,6 +13,7 @@ from app.db.repo.chats import ChatRepo
 from app.db.repo.events import log_event
 from app.db.repo.items import ItemRepo
 from app.delivery.order_sync import OrderSyncError, OrderSyncResult
+from app.delivery.polish import PolishRunResult
 from app.main import create_app
 from app.pipeline.engine import SendResult
 from app.protocol.items import ItemInfo
@@ -918,3 +919,33 @@ def test_account_nickname_api(
     assert response.json() == {"nickname": "18号当铺"}
 
     assert client.post("/api/accounts/999/nickname", headers=headers).status_code == 404
+
+
+class _FakePolishAll:
+    def __init__(self, result: PolishRunResult) -> None:
+        self.result = result
+        self.calls: list[int] = []
+
+    async def polish_all(self, account_id: int) -> PolishRunResult:
+        self.calls.append(account_id)
+        return self.result
+
+
+def test_polish_all_api(client: TestClient, authed: tuple[TestClient, str]) -> None:
+    client, csrf = authed
+    headers = {"X-CSRF-Token": csrf}
+    account_id = _make_account(client)
+    _call(client, client.app.state.supervisor.accounts.save_cookie, account_id, {"unb": "10001"})
+    fake = _FakePolishAll(PolishRunResult(accounts=1, polished=2, already=1))
+    client.app.state.supervisor.polish = fake
+
+    response = client.post(f"/api/accounts/{account_id}/items/polish-all", headers=headers)
+
+    assert response.status_code == 200
+    assert fake.calls == [account_id]
+    assert response.json() == {"ok": True, "polished": 2, "already": 1, "failed": 0}
+
+    blank = _call(client, client.app.state.supervisor.accounts.upsert, "10002")
+    no_cookie = client.post(f"/api/accounts/{blank.id}/items/polish-all", headers=headers)
+    assert no_cookie.status_code == 409
+    assert client.post("/api/accounts/999/items/polish-all", headers=headers).status_code == 404

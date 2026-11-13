@@ -92,7 +92,7 @@ describe("商品管理 - 卡密池与默认关闭", () => {
     render(<ItemsPage />);
     expect(await screen.findByText(/最近 11-09/)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: /擦\s*亮/ }));
+    await userEvent.click(screen.getByRole("button", { name: /^擦\s*亮$/ }));
 
     await waitFor(() =>
       expect(api.post).toHaveBeenCalledWith("/api/accounts/1/items/1096/polish")
@@ -230,5 +230,22 @@ describe("商品管理 - 卡密池与默认关闭", () => {
     expect(textarea).toHaveValue("{item_title}");
     const preview = within(drawer).getByText("实时预览").closest(".ant-card") as HTMLElement;
     expect(preview).toHaveTextContent("电子书");
+  });
+
+  it("一键擦亮调用批量接口并展示结果", async () => {
+    mockGet(configuredItem());
+    vi.mocked(api.post).mockResolvedValue({ ok: true, polished: 2, already: 1, failed: 0 });
+
+    render(<ItemsPage />);
+    await screen.findByText("电子书");
+
+    await userEvent.click(screen.getByRole("button", { name: /一键擦亮/ }));
+
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/api/accounts/1/items/polish-all")
+    );
+    expect(
+      await screen.findByText("一键擦亮完成：成功 2，已擦 1，失败 0")
+    ).toBeInTheDocument();
   });
 });

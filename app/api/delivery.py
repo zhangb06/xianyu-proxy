@@ -488,6 +488,25 @@ async def polish_item_now(
     }
 
 
+@router.post("/accounts/{account_id}/items/polish-all")
+async def polish_all_items(
+    account_id: int, request: Request, _session=Depends(require_write)
+) -> dict[str, object]:
+    await _account_or_404(request, account_id)
+    if not await request.app.state.supervisor.accounts.load_cookie(account_id):
+        raise HTTPException(status_code=409, detail="账号尚未登录，请先扫码登录")
+    try:
+        result = await request.app.state.supervisor.polish.polish_all(account_id)
+    except PolishError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "polished": result.polished,
+        "already": result.already,
+        "failed": result.failed,
+    }
+
+
 @router.get("/accounts/{account_id}/items/{item_id}/delivery")
 async def get_item_delivery(
     account_id: int, item_id: str, request: Request, _session=Depends(require_admin)

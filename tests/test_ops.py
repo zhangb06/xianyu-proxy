@@ -272,6 +272,43 @@ def test_auto_polish_target_stable_within_window() -> None:
     assert first != auto_polish_target(2, "2026-11-10")
 
 
+async def test_polish_all_skips_today_and_reports_counts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("app.delivery.polish.POLISH_SPACING_RANGE", (0.0, 0.0))
+    db, account, accounts = await _setup(tmp_path)
+    try:
+        await _polishable_item(db, account.id, "1")
+        await _polishable_item(db, account.id, "2")
+        await ItemRepo(db).set_polish(account.id, "2", polished_at=utc_now_iso())
+        await ItemRepo(db).ensure(account.id, "3", status="已售出")
+        stub = StubPolisher()
+        service = PolishService(db, accounts, polisher=stub)
+
+        result = await service.polish_all(account.id)
+
+        assert (result.polished, result.already, result.failed) == (1, 1, 0)
+        assert [item_id for item_id, _ in stub.calls] == ["1"]
+
+        again = await service.polish_all(account.id)
+        assert (again.accounts, again.polished, again.already) == (0, 0, 2)
+        assert len(stub.calls) == 1
+    finally:
+        await db.close()
+
+
+async def test_polish_all_requires_cookie(tmp_path: Path) -> None:
+    db, account, accounts = await _setup(tmp_path)
+    try:
+        await db.write("DELETE FROM account_credential WHERE account_id = ?", (account.id,))
+        service = PolishService(db, accounts, polisher=StubPolisher())
+        with pytest.raises(PolishError) as info:
+            await service.polish_all(account.id)
+        assert "尚未登录" in str(info.value)
+    finally:
+        await db.close()
+
+
 async def test_run_auto_waits_for_daily_random_target_then_runs_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
