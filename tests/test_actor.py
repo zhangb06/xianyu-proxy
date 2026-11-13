@@ -150,6 +150,34 @@ async def test_actor_reconnects_after_connect_failure(tmp_path: Path, monkeypatc
         await db.close()
 
 
+async def test_supervisor_reload_restarts_finished_actor(tmp_path: Path, monkeypatch) -> None:
+    db = Database(tmp_path / "test.db")
+    await db.connect()
+    try:
+        accounts = AccountRepo(db, "secret")
+        account = await _make_account(db, tmp_path, monkeypatch)
+
+        supervisor = Supervisor(db, Settings(), "secret")
+        await supervisor.start()
+        try:
+            first = supervisor.actors[account.id]
+            await first.stop()
+            assert not first.running
+
+            await supervisor.reload()
+
+            second = supervisor.actors[account.id]
+            assert second is not first
+            assert second.running
+            await _wait_for(lambda: any(fake.connected for fake in FakeXianyuWS.instances))
+            loaded = await accounts.get(account.id)
+            assert loaded is not None and loaded.status == "online"
+        finally:
+            await supervisor.stop()
+    finally:
+        await db.close()
+
+
 async def test_supervisor_starts_enabled_accounts(tmp_path: Path, monkeypatch) -> None:
     db = Database(tmp_path / "test.db")
     await db.connect()

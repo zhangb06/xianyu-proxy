@@ -43,6 +43,10 @@ class AccountActor(OutboundSender):
     def account_id(self) -> int:
         return self.account.id
 
+    @property
+    def running(self) -> bool:
+        return self._task is not None and not self._task.done()
+
     async def start(self) -> None:
         if self._task is None:
             self._task = asyncio.create_task(self._run(), name=f"actor-{self.account.id}")

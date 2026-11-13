@@ -162,7 +162,9 @@ class Supervisor:
     async def start_account(self, account: Account) -> AccountActor:
         existing = self.actors.get(account.id)
         if existing is not None:
-            return existing
+            if existing.running:
+                return existing
+            await self.stop_account(account.id)
         deps = ActorDeps(
             settings=self.settings,
             accounts=self.accounts,
@@ -192,9 +194,8 @@ class Supervisor:
     async def reload(self) -> None:
         """按启用状态差异启停账号。"""
         enabled = {a.id: a for a in await self.accounts.list_enabled()}
-        for account_id, account in enabled.items():
-            if account_id not in self.actors:
-                await self.start_account(account)
+        for account in enabled.values():
+            await self.start_account(account)
         for account_id in list(self.actors):
             if account_id not in enabled:
                 await self.stop_account(account_id)
