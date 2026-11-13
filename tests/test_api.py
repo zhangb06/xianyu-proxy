@@ -68,6 +68,15 @@ def test_first_run_setup_then_protected_routes(client: TestClient) -> None:
     assert client.get("/api/accounts").status_code == 200
 
 
+def test_console_session_lasts_seven_days(client: TestClient, authed: tuple[TestClient, str]) -> None:
+    client, _csrf = authed
+    response = client.post("/api/auth/login", json={"password": PASSWORD})
+
+    assert response.status_code == 200
+    cookie = response.headers["set-cookie"].lower()
+    assert "max-age=604800" in cookie
+
+
 def test_login_logout_and_csrf(client: TestClient, authed: tuple[TestClient, str]) -> None:
     client, csrf = authed
 

@@ -8,7 +8,7 @@ import secrets
 import time
 from dataclasses import dataclass
 
-SESSION_TTL_SECONDS = 12 * 3600
+SESSION_TTL_SECONDS = 7 * 24 * 3600
 
 
 @dataclass(slots=True)
