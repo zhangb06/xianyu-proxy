@@ -67,7 +67,7 @@ describe("会话", () => {
   it("列表展示会话并在抽屉里查看消息", async () => {
     render(<ChatsPage />);
 
-    expect(await screen.findByText("买家")).toBeInTheDocument();
+    expect((await screen.findAllByText("买家")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("主号").length).toBeGreaterThan(0);
     expect(screen.getByText("42")).toBeInTheDocument();
     expect(screen.getByText("开启")).toBeInTheDocument();
@@ -80,7 +80,7 @@ describe("会话", () => {
 
   it("手动回复后提交文本并刷新消息", async () => {
     render(<ChatsPage />);
-    await screen.findByText("买家");
+    await screen.findAllByText("买家");
     await userEvent.click(screen.getByRole("button", { name: /^查\s*看$/ }));
     await screen.findByText("在吗");
 
@@ -100,7 +100,7 @@ describe("会话", () => {
 
   it("暂停自动回复提交暂停时长", async () => {
     render(<ChatsPage />);
-    await screen.findByText("买家");
+    await screen.findAllByText("买家");
     await userEvent.click(screen.getByRole("button", { name: /^查\s*看$/ }));
     await screen.findByText("在吗");
 
@@ -127,7 +127,7 @@ describe("会话", () => {
 
   it("按账号筛选会话", async () => {
     render(<ChatsPage />);
-    await screen.findByText("买家");
+    await screen.findAllByText("买家");
 
     await userEvent.click(screen.getByRole("combobox"));
     await screen.findByText("主号（10001）", { selector: ".ant-select-item-option-content" });

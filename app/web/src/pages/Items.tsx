@@ -22,6 +22,7 @@ import dayjs from "dayjs";
 import { api } from "../api";
 import TemplateEditor from "../components/TemplateEditor";
 import { accountLabel, pickAccountId, rememberAccountId } from "../lib/account";
+import { useIsMobile } from "../lib/useMobile";
 import { FIXED_TEMPLATE_VARIABLES, sampleValues, TEMPLATE_VARIABLES } from "../lib/template";
 
 const MODE_META: Record<string, { label: string; color: string }> = {
@@ -48,6 +49,7 @@ export default function ItemsPage() {
   const [polishing, setPolishing] = useState("");
   const [polishingAll, setPolishingAll] = useState(false);
   const [form] = Form.useForm();
+  const mobile = useIsMobile();
   const mode = Form.useWatch("mode", form);
   const delivery = active?.delivery;
 
@@ -204,7 +206,7 @@ export default function ItemsPage() {
       title="商品管理"
       extra={
         <Select
-          style={{ width: 200 }}
+          style={{ width: 200, maxWidth: "100%" }}
           placeholder="选择账号"
           value={accountId}
           onChange={(value) => {
@@ -256,6 +258,7 @@ export default function ItemsPage() {
             message="这里只展示你正在出售的商品，已售出和已下架的商品不会出现。后台会定时自动同步，新上架/下架自动更新；也可点「同步商品」立即刷新。"
           />
           <Table
+            scroll={{ x: "max-content" }}
             rowKey="id"
             size="small"
             dataSource={items}
@@ -385,7 +388,7 @@ export default function ItemsPage() {
 
       <Drawer
         open={active !== null}
-        width={560}
+        width={mobile ? "100%" : 560}
         title={
           <Space direction="vertical" size={0}>
             <span>{active?.title}</span>

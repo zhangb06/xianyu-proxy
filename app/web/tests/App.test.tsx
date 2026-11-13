@@ -90,4 +90,28 @@ describe("应用入口与鉴权", () => {
     await waitFor(() => expect(api.post).toHaveBeenCalledWith("/api/auth/logout"));
     expect(await screen.findByText("登录闲鱼 Lite")).toBeInTheDocument();
   });
+
+  it("窄屏使用抽屉导航", async () => {
+    window.innerWidth = 375;
+    vi.mocked(api.get).mockImplementation((path: string) => {
+      if (path === "/api/auth/status") {
+        return Promise.resolve(authStatus(false, true));
+      }
+      if (path === "/api/overview") {
+        return Promise.resolve(overview);
+      }
+      return Promise.reject(new Error(`unexpected GET ${path}`));
+    });
+
+    try {
+      render(<App />);
+      expect(await screen.findByText("在线账号")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "菜单" }));
+
+      expect(await screen.findByText("自动发货")).toBeInTheDocument();
+    } finally {
+      window.innerWidth = 1024;
+    }
+  });
 });

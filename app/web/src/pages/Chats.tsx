@@ -18,8 +18,10 @@ import { SendOutlined } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "../api";
 import { accountLabel } from "../lib/account";
+import { useIsMobile } from "../lib/useMobile";
 
 export default function ChatsPage() {
+  const mobile = useIsMobile();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [accountFilter, setAccountFilter] = useState<number | null>(null);
   const [chats, setChats] = useState<any[]>([]);
@@ -110,7 +112,7 @@ export default function ChatsPage() {
         <Select
           allowClear
           placeholder="全部账号"
-          style={{ width: 200 }}
+          style={{ width: 200, maxWidth: "100%" }}
           value={accountFilter}
           onChange={(v) => setAccountFilter(v ?? null)}
           options={accounts.map((a) => ({ value: a.id, label: accountLabel(a) }))}
@@ -118,6 +120,7 @@ export default function ChatsPage() {
       }
     >
       <Table
+        scroll={{ x: "max-content" }}
         rowKey="id"
         size="small"
         dataSource={chats}
@@ -151,6 +154,7 @@ export default function ChatsPage() {
         ]}
       />
       <Drawer
+        width={mobile ? "100%" : 480}
         open={active !== null}
         title={
           <Space>
@@ -158,7 +162,6 @@ export default function ChatsPage() {
             {active?.paused ? <Tag color="warning">已暂停</Tag> : null}
           </Space>
         }
-        width={480}
         onClose={() => setActive(null)}
         extra={
           <Space>

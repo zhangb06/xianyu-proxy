@@ -23,6 +23,7 @@ import { PlusOutlined, ReloadOutlined, SyncOutlined, UploadOutlined } from "@ant
 import dayjs from "dayjs";
 import { api } from "../api";
 import { accountLabel, pickAccountId, rememberAccountId } from "../lib/account";
+import { useIsMobile } from "../lib/useMobile";
 import TemplateEditor from "../components/TemplateEditor";
 import { sampleValues, TEMPLATE_VARIABLES } from "../lib/template";
 import { parseSecretFile } from "../lib/secretFile";
@@ -57,6 +58,7 @@ function statusTag(value: string, mapping: Record<string, { label: string; color
 }
 
 export default function DeliveryPage() {
+  const mobile = useIsMobile();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [accountId, setAccountId] = useState<number | null>(null);
 
@@ -246,7 +248,7 @@ export default function DeliveryPage() {
         showIcon
         message="订单来自会话中的系统付款通知。只有「商品管理」中已启用自动发货的商品才会自动发送；未配置或已关闭的商品转为“需人工”。"
       />
-      <Space>
+      <Space wrap>
         <Select
           allowClear
           placeholder="全部状态"
@@ -269,6 +271,7 @@ export default function DeliveryPage() {
         </Typography.Text>
       </Space>
       <Table
+        scroll={{ x: "max-content" }}
         rowKey="id"
         size="small"
         dataSource={orders}
@@ -390,6 +393,7 @@ export default function DeliveryPage() {
       />
       <Card size="small" title="发货任务队列（outbox）">
         <Table
+          scroll={{ x: "max-content" }}
           rowKey="id"
           size="small"
           dataSource={outbox}
@@ -423,7 +427,7 @@ export default function DeliveryPage() {
 
   const cardsTab = (
     <Space direction="vertical" style={{ width: "100%" }} size="middle">
-      <Space>
+      <Space wrap>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCardModal(true)}>
           新建卡密池
         </Button>
@@ -435,6 +439,7 @@ export default function DeliveryPage() {
         </Typography.Text>
       </Space>
       <Table
+        scroll={{ x: "max-content" }}
         rowKey="id"
         size="small"
         dataSource={cards}
@@ -521,7 +526,7 @@ export default function DeliveryPage() {
 
   const rulesTab = (
     <Space direction="vertical" style={{ width: "100%" }} size="middle">
-      <Space>
+      <Space wrap>
         <Button
           type="primary"
           icon={<PlusOutlined />}
@@ -544,6 +549,7 @@ export default function DeliveryPage() {
         </Typography.Text>
       </Space>
       <Table
+        scroll={{ x: "max-content" }}
         rowKey="id"
         size="small"
         dataSource={rules}
@@ -629,7 +635,7 @@ export default function DeliveryPage() {
       title="自动发货"
       extra={
         <Select
-          style={{ width: 200 }}
+          style={{ width: 200, maxWidth: "100%" }}
           placeholder="选择账号"
           value={accountId}
           onChange={(value) => {
@@ -705,7 +711,7 @@ export default function DeliveryPage() {
 
       <Drawer
         open={secretsDrawer.open}
-        width={720}
+        width={mobile ? "100%" : 720}
         title={`卡密 - ${secretsDrawer.card?.name || ""}`}
         onClose={() => setSecretsDrawer({ open: false, card: null, rows: [] })}
       >
@@ -716,6 +722,7 @@ export default function DeliveryPage() {
           message="卡密仅展示脱敏结果；发放记录以订单与卡密状态为准。"
         />
         <Table
+          scroll={{ x: "max-content" }}
           rowKey="id"
           size="small"
           dataSource={secretsDrawer.rows}

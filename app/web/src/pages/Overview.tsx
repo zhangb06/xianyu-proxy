@@ -53,29 +53,30 @@ export default function OverviewPage() {
 
   return (
     <Row gutter={[16, 16]}>
-      <Col span={6}>
+      <Col xs={12} md={6}>
         <Card>
           <Statistic title="在线账号" value={data.accounts.online} suffix={`/ ${data.accounts.total}`} />
         </Card>
       </Col>
-      <Col span={6}>
+      <Col xs={12} md={6}>
         <Card>
           <Statistic title="今日收到" value={data.today.inbound} />
         </Card>
       </Col>
-      <Col span={6}>
+      <Col xs={12} md={6}>
         <Card>
           <Statistic title="今日发出" value={data.today.outbound} />
         </Card>
       </Col>
-      <Col span={6}>
+      <Col xs={12} md={6}>
         <Card>
           <Statistic title="待处理告警" value={data.issues.length} />
         </Card>
       </Col>
-      <Col span={14}>
+      <Col xs={24} md={14}>
         <Card title="账号状态">
           <Table
+            scroll={{ x: "max-content" }}
             rowKey="id"
             size="small"
             pagination={false}
@@ -88,7 +89,7 @@ export default function OverviewPage() {
           />
         </Card>
       </Col>
-      <Col span={10}>
+      <Col xs={24} md={10}>
         <Card title="最近告警">
           <List
             size="small"

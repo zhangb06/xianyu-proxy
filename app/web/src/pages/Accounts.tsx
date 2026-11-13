@@ -240,6 +240,7 @@ export default function AccountsPage() {
       }
     >
       <Table
+        scroll={{ x: "max-content" }}
         rowKey="id"
         dataSource={accounts}
         pagination={false}

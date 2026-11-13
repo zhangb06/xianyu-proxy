@@ -198,7 +198,7 @@ export default function RulesPage() {
       title="自动回复规则"
       extra={
         <Select
-          style={{ width: 220 }}
+          style={{ width: 220, maxWidth: "100%" }}
           value={accountId}
           onChange={(value) => {
             setAccountId(value);
@@ -351,6 +351,7 @@ export default function RulesPage() {
                   新增规则
                 </Button>
                 <Table
+                  scroll={{ x: "max-content" }}
                   rowKey="id"
                   size="small"
                   pagination={false}
@@ -412,10 +413,10 @@ export default function RulesPage() {
                   <Input.TextArea rows={3} maxLength={2000} showCount />
                 </Form.Item>
                 <Form.Item name="debounce_seconds" label="同会话防抖（秒），0 为关闭">
-                  <InputNumber min={0} max={86400} style={{ width: 200 }} />
+                  <InputNumber min={0} max={86400} style={{ width: 200, maxWidth: "100%" }} />
                 </Form.Item>
                 <Form.Item name="reply_expiry_seconds" label="消息过期时间（秒），0 为不过期">
-                  <InputNumber min={0} max={2592000} style={{ width: 200 }} />
+                  <InputNumber min={0} max={2592000} style={{ width: 200, maxWidth: "100%" }} />
                 </Form.Item>
                 <Button type="primary" htmlType="submit">
                   保存
@@ -442,6 +443,7 @@ export default function RulesPage() {
                   </Form.Item>
                 </Form>
                 <Table
+                  scroll={{ x: "max-content" }}
                   rowKey="id"
                   size="small"
                   pagination={false}
