@@ -233,4 +233,29 @@ describe("账号管理", () => {
     await waitFor(() => expect(remark).toHaveValue("18号当铺"));
     expect(api.post).toHaveBeenCalledWith("/api/accounts/1/nickname");
   });
+
+  it("窄屏使用卡片列表并直接显示账号操作", async () => {
+    vi.mocked(api.get).mockImplementation((path: string) => {
+      if (path === "/api/accounts") {
+        return Promise.resolve(accounts);
+      }
+      if (path.endsWith("/ops")) {
+        return Promise.resolve({ account_id: 1, auto_polish: false, flower_enabled: false });
+      }
+      return Promise.reject(new Error(`unexpected GET ${path}`));
+    });
+
+    window.innerWidth = 375;
+    try {
+      render(<AccountsPage />);
+
+      await screen.findByText("主号");
+      expect(screen.getAllByRole("button", { name: /重新扫码/ }).length).toBe(2);
+
+      await userEvent.click(screen.getAllByRole("button", { name: /^编\s*辑$/ })[0]);
+      expect(await screen.findByText("编辑账号 10001")).toBeInTheDocument();
+    } finally {
+      window.innerWidth = 1024;
+    }
+  });
 });

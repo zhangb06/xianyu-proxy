@@ -5,6 +5,7 @@ import {
   Card,
   Form,
   Input,
+  List,
   Modal,
   Popconfirm,
   Select,
@@ -16,6 +17,7 @@ import {
 } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import { api } from "../api";
+import { useIsMobile } from "../lib/useMobile";
 import { StatusTag } from "./Overview";
 
 const VERIFICATION_OPTIONS = [
@@ -151,6 +153,7 @@ export default function AccountsPage() {
   const [loadingNick, setLoadingNick] = useState(false);
   const [editing, setEditing] = useState<any>(null);
   const [form] = Form.useForm();
+  const mobile = useIsMobile();
 
   const load = useCallback(() => {
     api
@@ -196,6 +199,31 @@ export default function AccountsPage() {
     }
   };
 
+  const renderActions = (row: any) => (
+    <Space wrap size={4}>
+      <Button size="small" onClick={() => toggle(row)}>
+        {row.enabled ? "停用" : "启用"}
+      </Button>
+      <Button
+        size="small"
+        onClick={() => {
+          setQrTarget(row);
+          setQrOpen(true);
+        }}
+      >
+        重新扫码
+      </Button>
+      <Button size="small" onClick={() => openEdit(row)}>
+        编辑
+      </Button>
+      <Popconfirm title="删除账号及其凭据、会话与消息记录？" onConfirm={() => remove(row)}>
+        <Button size="small" danger>
+          删除
+        </Button>
+      </Popconfirm>
+    </Space>
+  );
+
   const loadNickname = async () => {
     if (!editing) return;
     setLoadingNick(true);
@@ -239,6 +267,49 @@ export default function AccountsPage() {
         </Button>
       }
     >
+      {mobile ? (
+        <List
+          dataSource={accounts}
+          locale={{ emptyText: "还没有账号，点上方「扫码添加」" }}
+          renderItem={(row: any) => (
+            <Card size="small" style={{ marginBottom: 12 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <Typography.Text strong ellipsis>
+                    {row.remark || "未命名"}
+                  </Typography.Text>
+                  <Typography.Text type="secondary">（{row.xianyu_id}）</Typography.Text>
+                </div>
+                <StatusTag status={row.status} />
+              </div>
+              {row.last_error ? (
+                <Typography.Text
+                  type="danger"
+                  style={{ display: "block", marginTop: 6, fontSize: 12 }}
+                >
+                  {row.last_error}
+                </Typography.Text>
+              ) : null}
+              <div style={{ marginTop: 6, fontSize: 12, color: "rgba(0,0,0,.45)" }}>
+                代理：{row.proxy_url || "直连"} · 验证：
+                {row.verification_mode
+                  ? row.verification_mode === "manual"
+                    ? "人工"
+                    : "自动兜底"
+                  : "全局"}
+              </div>
+              <div style={{ marginTop: 10 }}>{renderActions(row)}</div>
+            </Card>
+          )}
+        />
+      ) : (
       <Table
         scroll={{ x: "max-content" }}
         rowKey="id"
@@ -270,33 +341,11 @@ export default function AccountsPage() {
           },
           {
             title: "操作",
-            render: (_, row: any) => (
-              <Space>
-                <Button size="small" onClick={() => toggle(row)}>
-                  {row.enabled ? "停用" : "启用"}
-                </Button>
-                <Button
-                  size="small"
-                  onClick={() => {
-                    setQrTarget(row);
-                    setQrOpen(true);
-                  }}
-                >
-                  重新扫码
-                </Button>
-                <Button size="small" onClick={() => openEdit(row)}>
-                  编辑
-                </Button>
-                <Popconfirm title="删除账号及其凭据、会话与消息记录？" onConfirm={() => remove(row)}>
-                  <Button size="small" danger>
-                    删除
-                  </Button>
-                </Popconfirm>
-              </Space>
-            ),
+            render: (_, row: any) => renderActions(row),
           },
         ]}
       />
+      )}
       <QrLoginModal
         open={qrOpen}
         account={qrTarget}
