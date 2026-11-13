@@ -20,6 +20,7 @@ from app.delivery.worker import DeliveryWorker
 from app.pipeline.engine import ReplyPipeline
 from app.runtime.account_actor import AccountActor, ActorDeps
 from app.runtime.profile import NICKNAME_INTERVAL_SECONDS, fill_account_nickname
+from app.runtime.session_keepalive import SESSION_CHECK_SECONDS, SessionKeeper
 
 
 class Supervisor:
@@ -36,6 +37,7 @@ class Supervisor:
         self.ops = AccountOpsRepo(db)
         self.polish = PolishService(db, self.accounts)
         self.order_sync = OrderSyncService(db, self.accounts)
+        self.sessions = SessionKeeper(db, self.accounts)
         self.pipeline = ReplyPipeline(db, self.ai, self.deliveries)
         self.connect_semaphore = asyncio.Semaphore(max(1, settings.account_concurrency))
         self.actors: dict[int, AccountActor] = {}
@@ -44,6 +46,7 @@ class Supervisor:
         self._catalog_backoff: dict[int, float] = {}
         self._polish_task: asyncio.Task[None] | None = None
         self._nickname_task: asyncio.Task[None] | None = None
+        self._session_task: asyncio.Task[None] | None = None
         self._stopping = False
 
     async def start(self) -> None:
@@ -55,10 +58,11 @@ class Supervisor:
             self._catalog_task = asyncio.create_task(self._catalog_loop())
         self._polish_task = asyncio.create_task(self._polish_loop())
         self._nickname_task = asyncio.create_task(self._nickname_loop())
+        self._session_task = asyncio.create_task(self._session_loop())
 
     async def stop(self) -> None:
         self._stopping = True
-        for attr in ("_catalog_task", "_polish_task", "_nickname_task"):
+        for attr in ("_catalog_task", "_polish_task", "_nickname_task", "_session_task"):
             task = getattr(self, attr)
             setattr(self, attr, None)
             if task is not None:
@@ -86,6 +90,26 @@ class Supervisor:
                 except Exception:
                     logger.exception("商品自动同步失败")
                 await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            pass
+
+    async def _session_loop(self) -> None:
+        try:
+            await asyncio.sleep(60)
+            while not self._stopping:
+                try:
+                    result = await self.sessions.check_all()
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception("会话保活失败")
+                else:
+                    if result.expired:
+                        logger.warning(f"会话保活发现 {result.expired} 个账号登录失效")
+                    if result.recovered:
+                        logger.info(f"会话保活恢复 {result.recovered} 个账号登录")
+                        await self.reload()
+                await asyncio.sleep(SESSION_CHECK_SECONDS)
         except asyncio.CancelledError:
             pass
 

@@ -487,3 +487,10 @@ available → claimed（订单占用） → used（发送成功）
 - 账号选择器统一显示「备注（闲鱼ID）」；无备注显示「闲鱼号 ID」；各页面记住上次选择的账号（localStorage，账号删除后自动回退第一个）。
 - 「读取闲鱼昵称」：账号编辑弹窗内按钮，取任一已有会话调用 `mtop.taobao.idlemessage.pc.user.query` 4.0（`isOwner=true`）返回 `userInfo.fishNick`，填入备注；无会话或未登录时明确提示，不改动账号数据。
 - 自动读取：扫码登录成功后立即尝试一次；同时后台每 60 秒为备注为空的账号尝试（需已有会话），成功后停止；任何失败静默跳过，绝不覆盖用户填写的备注。
+
+## 20. 会话保活（2026-11-13）
+
+- 扫码得到的网页 Cookie 短效：实测约 5 小时后接口报 `SESSION_EXPIRED`，而 WS 仍可能在线，两者生命周期独立。
+- 后台每 30 分钟对启用且有 Cookie 的账号调用只读接口 `mtop.taobao.idlemessage.pc.loginuser.get`，把响应 `Set-Cookie` 合并写回，顺延短效会话。
+- 返回 Session/Token 过期类错误时，把账号状态置为 `error`、`last_error=登录已失效，请重新扫码`，并记录 `login.session_expired` 事件；账号页会直接显示原因。
+- 保活恢复（例如已重新扫码）时状态回到 `new`、清除错误并触发 supervisor reload；仍不保存账号密码，不绕过闲鱼风控。
